@@ -1,0 +1,34 @@
+{
+  "name": "applicator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k -n api,web \"node --use-system-ca --watch server/index.mjs\" \"vite --host 127.0.0.1\"",
+    "build": "tsc --noEmit && vite build",
+    "start": "node --use-system-ca server/index.mjs",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@supabase/supabase-js": "^2.57.4",
+    "cheerio": "^1.1.2",
+    "dotenv": "^17.2.2",
+    "express": "^5.1.0",
+    "jspdf": "^3.0.3",
+    "lucide-react": "^0.468.0",
+    "mammoth": "^1.10.0",
+    "pdfjs-dist": "^5.4.149",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "zod": "^4.1.11"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.16",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.3",
+    "concurrently": "^9.2.1",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.7"
+  }
+}
