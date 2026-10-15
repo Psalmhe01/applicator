@@ -1,0 +1,319 @@
+/* Account and owner screens share the existing card/field primitives. */
+.auth-layout {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 25px;
+  padding: 40px 20px;
+}
+.auth-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font:
+    34px Georgia,
+    serif;
+  color: #5e7753;
+}
+.auth-panel {
+  width: min(100%, 510px);
+  padding: 36px;
+}
+.auth-panel h1 {
+  font-size: 32px;
+  margin: 12px 0 20px;
+}
+.auth-panel p {
+  margin-bottom: 22px;
+  line-height: 1.8;
+  color: var(--muted);
+}
+.auth-panel form {
+  margin: 20px 0;
+}
+.auth-panel > .button {
+  margin: 8px 8px 0 0;
+}
+.auth-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 24px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.admin-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 22px;
+}
+.admin-grid .card > p,
+.settings-grid .card > p {
+  margin: 12px 0 20px;
+  line-height: 1.8;
+}
+.admin-grid .stack-list {
+  margin: 16px 0;
+}
+.simple-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.simple-check input {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  accent-color: #7a976b;
+}
+.member-list {
+  margin-top: 15px;
+}
+.member-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid var(--line);
+  padding: 16px 0;
+}
+.member-row strong {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.member-row small {
+  display: block;
+  color: var(--muted);
+  margin-top: 5px;
+  font-size: 11px;
+}
+.member-row .button {
+  flex-shrink: 0;
+}
+.invitation-result {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+.theme-choices {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 22px;
+}
+.theme-choices button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 20px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+}
+.theme-choices button.selected {
+  border-color: #8da581;
+  background: #eaf0e4;
+  color: #3e6035;
+}
+.adzuna-attribution {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 116px;
+  min-height: 23px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 12px;
+  text-decoration: none;
+  margin-top: 10px;
+}
+
+/* Theme variables cover shared primitives; overrides below cover legacy fixed colors. */
+:root[data-theme='dark'] {
+  background: #121a16;
+  color: #e3ebdf;
+  --ink: #e3ebdf;
+  --muted: #acb9a5;
+  --line: #344238;
+  --sage: #26382a;
+  --peach: #49322b;
+  --lavender: #353146;
+  color-scheme: dark;
+}
+[data-theme='dark'] body {
+  background: #121a16;
+  color: var(--ink);
+}
+[data-theme='dark'] .sidebar,
+[data-theme='dark'] .topbar {
+  background: #17211b;
+  border-color: var(--line);
+}
+[data-theme='dark'] .card,
+[data-theme='dark'] .modal,
+[data-theme='dark'] .detail-panel,
+[data-theme='dark'] .application-table-wrap {
+  background: #1b271f;
+  border-color: var(--line);
+}
+[data-theme='dark'] input,
+[data-theme='dark'] textarea,
+[data-theme='dark'] select,
+[data-theme='dark'] .search-field,
+[data-theme='dark'] .status-filter {
+  background: #152019;
+  border-color: #405046;
+  color: #e3ebdf;
+}
+[data-theme='dark'] input::placeholder,
+[data-theme='dark'] textarea::placeholder {
+  color: #97a68f;
+}
+[data-theme='dark'] h1,
+[data-theme='dark'] h2,
+[data-theme='dark'] h3,
+[data-theme='dark'] h4,
+[data-theme='dark'] strong,
+[data-theme='dark'] .brand,
+[data-theme='dark'] .job-title {
+  color: var(--ink);
+}
+[data-theme='dark'] .muted,
+[data-theme='dark'] small,
+[data-theme='dark'] .job-excerpt,
+[data-theme='dark'] .job-meta,
+[data-theme='dark'] .page-heading p,
+[data-theme='dark'] .overview-heading p,
+[data-theme='dark'] .breadcrumb,
+[data-theme='dark'] .save-indicator,
+[data-theme='dark'] .result-count,
+[data-theme='dark'] .field > span {
+  color: var(--muted);
+}
+[data-theme='dark'] .button.secondary,
+[data-theme='dark'] .pipeline-strip button,
+[data-theme='dark'] .theme-choices button.selected {
+  background: #2a3a2d;
+  color: #e0ebd8;
+  border-color: #52664a;
+}
+[data-theme='dark'] .button.ghost,
+[data-theme='dark'] .icon-button,
+[data-theme='dark'] .sidebar nav button,
+[data-theme='dark'] .sidebar-bottom > button {
+  color: #b9c7b0;
+}
+[data-theme='dark'] .button.ghost:hover,
+[data-theme='dark'] .sidebar nav button:hover {
+  background: #293a2d;
+}
+[data-theme='dark'] .sidebar nav button.active,
+[data-theme='dark'] .sidebar-bottom > button.active {
+  background: #2c412e;
+  color: #e3edda;
+}
+[data-theme='dark'] .sidebar-note,
+[data-theme='dark'] .welcome-banner,
+[data-theme='dark'] .discovery-controls,
+[data-theme='dark'] .sage-note,
+[data-theme='dark'] .ai-review,
+[data-theme='dark'] .review-check {
+  background: #25362a;
+  border-color: #40573a;
+}
+[data-theme='dark'] .welcome-copy p,
+[data-theme='dark'] .welcome-copy em,
+[data-theme='dark'] .discovery-heading p,
+[data-theme='dark'] .discovery-controls small {
+  color: #becbab;
+}
+[data-theme='dark'] .inline-note,
+[data-theme='dark'] .detail-notice {
+  background: #29382a;
+  color: #d2dfc4;
+  border-color: #4c6043;
+}
+[data-theme='dark'] .error-banner {
+  background: #422d28;
+  color: #f1c4b4;
+  border-color: #735142;
+}
+[data-theme='dark'] .job-card-footer,
+[data-theme='dark'] .application-table td {
+  border-color: var(--line);
+  color: var(--muted);
+}
+[data-theme='dark'] .application-table th {
+  background: #243228;
+  color: #bdcbb5;
+}
+[data-theme='dark'] .application-table tbody tr:hover {
+  background: #273b2c;
+}
+[data-theme='dark'] .opening-tags > span,
+[data-theme='dark'] .tabs button span {
+  background: #2c3f30;
+  color: #c6d6bb;
+}
+[data-theme='dark'] .tabs button {
+  color: #a3b199;
+}
+[data-theme='dark'] .tabs button[aria-selected='true'] {
+  color: #d2e1c4;
+  border-color: #a7c091;
+}
+[data-theme='dark'] .toast {
+  background: #324735;
+  color: #eef5e8;
+  border-color: #58764a;
+}
+[data-theme='dark'] .sql-block {
+  background: #121a16;
+  color: #d9e7d0;
+}
+
+/* Resume previews retain the document's white-paper colors in both app themes. */
+[data-theme='dark'] .resume-paper {
+  background: #fff;
+  color: #28332e;
+}
+[data-theme='dark'] .resume-paper * {
+  color: #28332e;
+}
+[data-theme='dark'] .resume-paper .muted {
+  color: #657064;
+}
+[data-theme='dark'] .paper-entry {
+  border-color: #d9dfd6;
+}
+@media (max-width: 800px) {
+  .admin-grid {
+    grid-template-columns: 1fr;
+  }
+  .auth-panel {
+    padding: 27px;
+  }
+  .member-row {
+    flex-wrap: wrap;
+  }
+  .theme-choices button {
+    padding: 16px 10px;
+  }
+}
+/* Successful signup feedback should remain legible in either color theme. */
+.auth-feedback {
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--sage);
+  color: var(--ink);
+}

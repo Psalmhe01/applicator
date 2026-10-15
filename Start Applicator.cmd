@@ -17,14 +17,12 @@ if not exist "node_modules\vite\bin\vite.js" (
   )
 )
 if not exist "dist\index.html" (
-if not exist "dist\index.html" (
   echo Building Applicator...
   call npm run build
   if errorlevel 1 (
     echo Build failed. See the error above.
     pause
     exit /b 1
-  )
   )
 )
 echo Open http://127.0.0.1:8787 in your browser. Keep this window open.

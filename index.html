@@ -6,8 +6,19 @@
     <meta name="theme-color" content="#f7f7f2" />
     <meta
       name="description"
-      content="A personal workspace to find opportunities, tailor honest resumes, and track applications."
+      content="A private workspace to find opportunities, tailor honest resumes, and track applications."
     />
+    <script>
+      try {
+        const t = localStorage.getItem("applicator.theme") || "System";
+        const d =
+          t === "Dark" ||
+          (t === "System" &&
+            matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.dataset.theme = d ? "dark" : "light";
+        document.documentElement.style.colorScheme = d ? "dark" : "light";
+      } catch {}
+    </script>
     <title>Applicator — Your next chapter</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   </head>
