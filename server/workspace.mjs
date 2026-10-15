@@ -39,6 +39,7 @@ const entry = z.object({
 // Resume snapshots retain the version used for each submitted application.
 const resume = z.object({
   id: short,
+  layout: z.enum(['current', 'classic']).default('current'),
   name: short,
   email: short,
   phone: short,

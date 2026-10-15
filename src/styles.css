@@ -70,6 +70,9 @@ select:focus-visible {
   outline: 3px solid #97b39d;
   outline-offset: 3px;
 }
+main[tabindex="-1"]:focus {
+  outline: none;
+}
 h1,
 h2,
 h3,
@@ -297,6 +300,7 @@ small,
   font-weight: 700;
   letter-spacing: -1.2px;
   text-align: left;
+  text-decoration: none;
 }
 .brand-mark {
   background: var(--accent);
@@ -347,7 +351,9 @@ small,
   gap: 6px;
 }
 .sidebar nav button,
-.sidebar-bottom > button {
+.sidebar nav a,
+.sidebar-bottom > button,
+.sidebar-bottom > a {
   display: flex;
   align-items: center;
   text-align: left;
@@ -359,18 +365,24 @@ small,
   font-size: 12px;
   color: #7b8378;
   white-space: nowrap;
+  text-decoration: none;
 }
 .sidebar nav button:hover,
-.sidebar-bottom > button:hover {
+.sidebar nav a:hover,
+.sidebar-bottom > button:hover,
+.sidebar-bottom > a:hover {
   background: #f1f3e9;
 }
 .sidebar nav button.active,
-.sidebar-bottom > button.active {
+.sidebar nav a.active,
+.sidebar-bottom > button.active,
+.sidebar-bottom > a.active {
   background: #eaf0e0;
   color: #4a6544;
   font-weight: 600;
 }
-.sidebar nav button.active svg {
+.sidebar nav button.active svg,
+.sidebar nav a.active svg {
   color: #5b7d50;
 }
 .nav-count {
@@ -410,7 +422,8 @@ small,
   font-size: 11px;
   line-height: 1.8;
 }
-.sidebar-note button {
+.sidebar-note button,
+.sidebar-note a {
   display: flex;
   align-items: center;
   gap: 7px;
@@ -421,11 +434,16 @@ small,
   font-size: 10px;
   color: #6f7d56;
   font-weight: 600;
+  text-decoration: none;
+}
+.sidebar-note a:hover {
+  text-decoration: underline;
 }
 .sidebar-bottom {
   margin-top: auto;
 }
-.sidebar-bottom > button {
+.sidebar-bottom > button,
+.sidebar-bottom > a {
   font-size: 11px;
   width: 100%;
   margin-bottom: 20px;
@@ -988,7 +1006,8 @@ main {
   border-bottom: 1px solid var(--line);
   margin-bottom: 23px;
 }
-.tabs button {
+.tabs button,
+.tabs a {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -999,13 +1018,19 @@ main {
   font-size: 12px;
   padding: 12px 0 15px;
   white-space: nowrap;
+  text-decoration: none;
 }
-.tabs button[aria-selected="true"] {
+.tabs a:hover {
+  color: #435b3c;
+}
+.tabs button[aria-selected="true"],
+.tabs a[aria-current="page"] {
   color: #435b3c;
   border-color: #809574;
   font-weight: 600;
 }
-.tabs button span {
+.tabs button span,
+.tabs a span {
   padding: 1px 6px;
   background: #edf0e6;
   border-radius: 4px;
@@ -1779,9 +1804,18 @@ code {
 .detail-actionbar {
   display: flex;
   flex-wrap: wrap;
+  align-items: flex-end;
   gap: 10px;
   padding: 4px 30px 21px;
   background: #fffef9;
+}
+.detail-actionbar .application-status-control {
+  flex: 1 1 170px;
+  max-width: 220px;
+}
+.application-status-control .field {
+  gap: 6px;
+  margin: 0;
 }
 .detail-notice {
   display: flex;
@@ -1855,7 +1889,17 @@ code {
 .resume-toolbar .field {
   flex: 1;
   max-width: 300px;
+  min-width: 170px;
   margin: 0;
+}
+.resume-toolbar > .flex-row {
+  gap: 8px;
+}
+.resume-editor {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
 }
 .resume-paper {
   background: #fff;
@@ -1893,7 +1937,7 @@ code {
 .paper-entry {
   margin: 15px 0;
 }
-.paper-entry > strong {
+.paper-entry-heading > strong {
   font-size: 12px;
 }
 .paper-entry > .small {
@@ -1905,6 +1949,70 @@ code {
 }
 .paper-entry li {
   margin: 5px 0;
+}
+.resume-paper-classic {
+  font-family: "Tinos", "Times New Roman", serif;
+  color: #111;
+}
+.resume-paper-classic h2 {
+  font-family: inherit;
+  font-size: 30px;
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-align: center;
+}
+.resume-paper-classic p,
+.resume-paper-classic li {
+  font-size: 12px;
+  line-height: 1.35;
+}
+.resume-paper-classic .resume-contact {
+  font-size: 10px;
+  text-align: center;
+  color: inherit;
+  margin-top: 4px;
+}
+.resume-paper-classic h4 {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  border-color: #111;
+  padding-bottom: 2px;
+  margin: 15px 0 6px;
+}
+.resume-paper-classic .paper-entry {
+  margin: 8px 0;
+}
+.resume-paper-classic .paper-entry-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  font-size: 12px;
+}
+.resume-paper-classic .paper-entry-heading > strong {
+  flex: 1 1 180px;
+}
+.resume-paper-classic .paper-entry-heading > span {
+  white-space: nowrap;
+}
+.resume-paper-classic .paper-entry-subheading {
+  font-style: italic;
+}
+.resume-paper-classic .paper-entry-url {
+  font-size: 10px;
+}
+.resume-paper-classic .paper-entry ul {
+  margin: 3px 0;
+}
+.resume-paper-classic .paper-skills {
+  margin: 3px 0;
+  padding-left: 18px;
+}
+.resume-paper-classic .paper-entry li {
+  margin: 2px 0;
 }
 .review-check {
   display: flex;
@@ -2133,7 +2241,8 @@ code {
   .main-shell {
     margin-left: 212px;
   }
-  .sidebar nav button {
+  .sidebar nav button,
+  .sidebar nav a {
     font-size: 11px;
   }
   .sidebar .brand {
@@ -2525,7 +2634,8 @@ code {
   .tabs {
     gap: 19px;
   }
-  .tabs button {
+  .tabs button,
+  .tabs a {
     font-size: 11px;
   }
   .filterbar {
@@ -2621,6 +2731,10 @@ code {
   .detail-actionbar .button {
     font-size: 10px;
     padding: 10px 12px;
+  }
+  .detail-actionbar .application-status-control {
+    flex-basis: 100%;
+    max-width: none;
   }
   .detail-panel > .tabs {
     gap: 20px;

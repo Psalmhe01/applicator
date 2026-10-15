@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Link as RouterLink } from 'react-router';
 import type { Opening, OpeningFeed } from './discovery';
 import {
   ArrowUpRight,
@@ -139,22 +140,21 @@ export default function JobsView({
   save,
   open,
   notify,
-  initialDiscover = false,
+  discover = false,
   tracker = false,
 }: {
   jobs: Job[];
   save: (j: Job) => void;
   open: (j: Job) => void;
   notify: (s: string) => void;
-  initialDiscover?: boolean;
+  discover?: boolean;
   tracker?: boolean;
 }) {
   const { account } = useAuth();
   const [provider, setProvider] = useState<'catalog' | 'adzuna'>(
     account?.providers.adzuna && account.settings.adzunaEnabled ? 'adzuna' : 'catalog',
   );
-  const [tab, setTab] = useState<'saved' | 'discover'>(initialDiscover ? 'discover' : 'saved'),
-    [query, setQuery] = useState(''),
+  const [query, setQuery] = useState(''),
     [filter, setFilter] = useState('All'),
     [adding, setAdding] = useState(false),
     [draft, setDraft] = useState(newJob({})),
@@ -174,7 +174,7 @@ export default function JobsView({
     [previewJob, setPreviewJob] = useState<Job | null>(null);
   const handledRefresh = useRef(0),
     openingInFlight = useRef(false);
-  const discovery = tab === 'discover' && !tracker;
+  const discovery = discover && !tracker;
   useEffect(() => {
     if (!discovery) return;
     const timer = setInterval(() => setRefreshToken((t) => t + 1), 15 * 60000);
@@ -337,29 +337,23 @@ export default function JobsView({
         </div>
       </div>
       {!tracker && (
-        <div className="tabs" role="tablist" aria-label="Opportunity sources">
-          <button
-            role="tab"
-            aria-selected={tab === 'saved'}
-            onClick={() => {
-              setTab('saved');
-              setFilter('All');
-            }}
+        <nav className="tabs" aria-label="Opportunity sources">
+          <RouterLink
+            to="/opportunities"
+            aria-current={!discovery ? 'page' : undefined}
+            onClick={() => setFilter('All')}
           >
             Saved opportunities <span>{jobs.length}</span>
-          </button>
-          <button
-            role="tab"
-            aria-selected={tab === 'discover'}
-            onClick={() => {
-              setTab('discover');
-              setFilter('All');
-            }}
+          </RouterLink>
+          <RouterLink
+            to="/opportunities?tab=discover"
+            aria-current={discovery ? 'page' : undefined}
+            onClick={() => setFilter('All')}
           >
             <Globe2 size={15} />
             Discover openings
-          </button>
-        </div>
+          </RouterLink>
+        </nav>
       )}
       {discovery && (
         <>

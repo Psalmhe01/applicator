@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import {
   ArrowDown,
@@ -23,8 +23,8 @@ import {
   type Job,
   type Profile,
   type Resume,
+  type ResumeLayout,
   type Status,
-  statuses,
   manualResume,
   resumeSchema,
   id,
@@ -34,7 +34,9 @@ import {
   formatDate,
 } from './model';
 import { api, errorText } from './api';
-import { resumePdf } from './export';
+import { resumeDocx, resumePdf } from './export';
+import ResumePreview from './ResumePreview';
+import ApplicationStatus from './ApplicationStatus';
 
 export default function RoleDetail({
   job,
@@ -62,19 +64,31 @@ export default function RoleDetail({
     [editResume, setEditResume] = useState(false),
     [confirmDelete, setConfirmDelete] = useState(false),
     [applyModal, setApplyModal] = useState(false),
+    [applyAsApplied, setApplyAsApplied] = useState(false),
     [selectedApplied, setSelectedApplied] = useState(
-      job.appliedResumeId || job.resumes.at(-1)?.id || '',
+      job.appliedAt || job.appliedResumeId
+        ? job.appliedResumeId || ''
+        : job.resumes.at(-1)?.id || '',
     ),
     [editJob, setEditJob] = useState(false),
     [jobFields, setJobFields] = useState(job);
   const resume = draft.resumes.find((r) => r.id === version),
     locked = !!resume && draft.appliedResumeId === resume.id;
+  const latestDraft = useRef(job);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   function commit(next: Job) {
+    latestDraft.current = next;
     setDraft(next);
     save(next);
   }
   function patchResume(patch: Partial<Resume>) {
-    if (!resume || locked) return;
+    if (!resume || locked || busy) return;
     const next = { ...resume, ...patch, reviewed: patch.reviewed ?? false };
     commit({
       ...draft,
@@ -82,20 +96,22 @@ export default function RoleDetail({
     });
   }
   function addResume(next: Resume) {
-    if (draft.resumes.length >= 50) {
+    const current = latestDraft.current;
+    if (current.resumes.length >= 50) {
       notify('This job has 50 resume versions. Export a backup before removing old versions.');
       return;
     }
     commit({
-      ...draft,
-      status: draft.status === 'Saved' ? 'Preparing' : draft.status,
-      resumes: [...draft.resumes, next],
+      ...current,
+      status: current.status === 'Saved' ? 'Preparing' : current.status,
+      resumes: [...current.resumes, next],
     });
     setVersion(next.id);
     setTab('resume');
     setEditResume(true);
   }
   async function tailor() {
+    if (busy) return;
     if (!draft.requirementsComplete) {
       notify(
         'Paste the full requirements with Edit details and confirm they are complete before using AI.',
@@ -124,6 +140,7 @@ export default function RoleDetail({
           requirementsComplete: draft.requirementsComplete,
         },
       });
+      if (!mounted.current) return;
       addResume(
         resumeSchema.parse({
           ...result,
@@ -136,36 +153,51 @@ export default function RoleDetail({
       );
       notify('Draft created. Review the changes and check every fact before downloading.');
     } catch (e) {
-      notify(errorText(e));
+      if (mounted.current) notify(errorText(e));
     } finally {
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   }
-  async function download() {
-    if (!resume) return;
+  async function download(format: 'pdf' | 'docx') {
+    if (!resume || busy) return;
+    if (!resume.reviewed) {
+      notify('Review this resume for accuracy before downloading.');
+      return;
+    }
     setBusy(true);
     try {
-      await resumePdf(resume, draft);
+      await (format === 'pdf' ? resumePdf(resume, draft) : resumeDocx(resume, draft));
+      if (!mounted.current) return;
+      const current = latestDraft.current;
       commit({
-        ...draft,
-        resumes: draft.resumes.map((r) =>
+        ...current,
+        resumes: current.resumes.map((r) =>
           r.id === resume.id ? { ...r, downloadedAt: new Date().toISOString() } : r,
         ),
       });
-      notify('PDF downloaded. This version is saved with the job.');
+      notify(
+        `${format === 'pdf' ? 'PDF' : 'Word document'} downloaded. This version is saved with the job.`,
+      );
     } catch (e) {
-      notify(errorText(e));
+      if (mounted.current) notify(errorText(e));
     } finally {
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
+  }
+  function recordApplication(explicitApplied = false) {
+    const current = latestDraft.current;
+    setApplyAsApplied(explicitApplied);
+    setSelectedApplied(
+      current.appliedAt || current.appliedResumeId ? current.appliedResumeId || '' : version || '',
+    );
+    setApplyModal(true);
   }
   function status(value: Status) {
     if (value === 'Applied') {
-      setSelectedApplied(version || '');
-      setApplyModal(true);
+      recordApplication(true);
       return;
     }
-    commit({ ...draft, status: value });
+    commit({ ...latestDraft.current, status: value });
   }
   const move = (index: number, direction: number) => {
     if (!resume) return;
@@ -197,6 +229,7 @@ export default function RoleDetail({
               </button>
             </div>
             <div className="detail-actionbar">
+              <ApplicationStatus value={draft.status} onChange={status} />
               <Button
                 onClick={tailor}
                 busy={busy}
@@ -220,11 +253,12 @@ export default function RoleDetail({
                 variant="ghost"
                 onClick={() => {
                   setTab('tracking');
-                  setSelectedApplied(version || '');
-                  setApplyModal(true);
+                  recordApplication();
                 }}
               >
-                Mark applied
+                {draft.appliedAt || draft.appliedResumeId
+                  ? 'Update application record'
+                  : 'Mark applied'}
               </Button>
             </div>
             {!aiConfigured && (
@@ -289,7 +323,7 @@ export default function RoleDetail({
                   </div>
                   <div className="small-footer">
                     <span>Saved {formatDate(draft.createdAt)}</span>
-                    <Button variant="ghost" onClick={() => setConfirmDelete(true)}>
+                    <Button variant="ghost" disabled={busy} onClick={() => setConfirmDelete(true)}>
                       <Trash2 size={14} />
                       Remove job
                     </Button>
@@ -318,6 +352,7 @@ export default function RoleDetail({
                       </Button>
                       <Button
                         variant="secondary"
+                        disabled={busy}
                         onClick={() => {
                           if (!profile.name || !profile.experiences.length) {
                             notify('Add your name and an experience/project first.');
@@ -337,6 +372,7 @@ export default function RoleDetail({
                       <Field label="Saved version">
                         <select
                           value={version}
+                          disabled={busy}
                           onChange={(e) => {
                             setVersion(e.target.value);
                             setEditResume(false);
@@ -350,9 +386,20 @@ export default function RoleDetail({
                           ))}
                         </select>
                       </Field>
+                      <Field label="Resume layout">
+                        <select
+                          value={resume.layout}
+                          disabled={locked || busy}
+                          onChange={(e) => patchResume({ layout: e.target.value as ResumeLayout })}
+                        >
+                          <option value="current">Current</option>
+                          <option value="classic">Classic serif</option>
+                        </select>
+                      </Field>
                       <div className="flex-row">
                         <Button
                           variant="secondary"
+                          disabled={busy}
                           onClick={() =>
                             locked
                               ? addResume({
@@ -368,9 +415,22 @@ export default function RoleDetail({
                           {locked ? <Copy size={15} /> : <Pencil size={15} />}{' '}
                           {locked ? 'Duplicate to edit' : editResume ? 'Preview' : 'Edit draft'}
                         </Button>
-                        <Button onClick={download} disabled={!resume.reviewed} busy={busy}>
+                        <Button
+                          onClick={() => void download('pdf')}
+                          disabled={!resume.reviewed}
+                          busy={busy}
+                        >
                           <Download size={16} />
                           Download PDF
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          onClick={() => void download('docx')}
+                          disabled={!resume.reviewed}
+                          busy={busy}
+                        >
+                          <Download size={16} />
+                          Download Word (.docx)
                         </Button>
                       </div>
                     </div>
@@ -378,7 +438,7 @@ export default function RoleDetail({
                       <div className="inline-note">
                         <History size={16} />
                         This is the version recorded for your application. Duplicate it to make
-                        further edits.
+                        further edits or change its layout.
                       </div>
                     )}
                     {resume.origin === 'AI' && (
@@ -421,7 +481,7 @@ export default function RoleDetail({
                       </details>
                     )}
                     {editResume && !locked ? (
-                      <div className="resume-editor stack">
+                      <fieldset className="resume-editor stack" disabled={busy}>
                         <Field label="Summary">
                           <textarea
                             rows={3}
@@ -543,65 +603,15 @@ export default function RoleDetail({
                             onChange={(e) => patchResume({ education: e.target.value })}
                           />
                         </Field>
-                      </div>
+                      </fieldset>
                     ) : (
-                      <div className="resume-paper">
-                        <h2>{resume.name}</h2>
-                        <p className="resume-contact">
-                          {[resume.email, resume.phone, resume.location, resume.website]
-                            .filter(Boolean)
-                            .join(' | ')}
-                        </p>
-                        {resume.summary && (
-                          <>
-                            <h4>PROFILE</h4>
-                            <p>{resume.summary}</p>
-                          </>
-                        )}
-                        {!!resume.skills.length && (
-                          <>
-                            <h4>SKILLS</h4>
-                            <p>{resume.skills.join(' · ')}</p>
-                          </>
-                        )}
-                        {['Experience', 'Project', 'Volunteering', 'Education'].map(
-                          (kind) =>
-                            resume.entries.some((e) => e.kind === kind) && (
-                              <div key={kind}>
-                                <h4>{kind === 'Project' ? 'PROJECTS' : kind.toUpperCase()}</h4>
-                                {resume.entries
-                                  .filter((e) => e.kind === kind)
-                                  .map((entry) => (
-                                    <div className="paper-entry" key={entry.sourceId}>
-                                      <strong>
-                                        {entry.title}
-                                        {entry.organization && ` — ${entry.organization}`}
-                                      </strong>
-                                      <p className="small muted">{entry.dates}</p>
-                                      {entry.url && <p className="small">{entry.url}</p>}
-                                      <ul>
-                                        {entry.bullets.map((bullet, i) => (
-                                          <li key={i}>{bullet}</li>
-                                        ))}
-                                      </ul>
-                                    </div>
-                                  ))}
-                              </div>
-                            ),
-                        )}
-                        {resume.education && (
-                          <>
-                            <h4>EDUCATION</h4>
-                            <p className="pre-line">{resume.education}</p>
-                          </>
-                        )}
-                      </div>
+                      <ResumePreview resume={resume} />
                     )}
                     <label className="review-check">
                       <input
                         type="checkbox"
                         checked={resume.reviewed}
-                        disabled={locked}
+                        disabled={locked || busy}
                         onChange={(e) => patchResume({ reviewed: e.target.checked })}
                       />
                       <span>
@@ -621,7 +631,11 @@ export default function RoleDetail({
                         <Plus size={16} />
                         New AI version
                       </Button>
-                      <Button variant="ghost" onClick={() => addResume(manualResume(profile))}>
+                      <Button
+                        variant="ghost"
+                        disabled={busy}
+                        onClick={() => addResume(manualResume(profile))}
+                      >
                         New manual version
                       </Button>
                     </div>
@@ -633,13 +647,6 @@ export default function RoleDetail({
                     <h3>Your application log</h3>
                     <CalendarDays size={20} />
                   </div>
-                  <Field label="Status">
-                    <select value={draft.status} onChange={(e) => status(e.target.value as Status)}>
-                      {statuses.map((s) => (
-                        <option key={s}>{s}</option>
-                      ))}
-                    </select>
-                  </Field>
                   <div className="form-grid">
                     <Field label="Applied on">
                       <input
@@ -686,13 +693,7 @@ export default function RoleDetail({
                       </p>
                     </div>
                   </div>
-                  <Button
-                    variant="secondary"
-                    onClick={() => {
-                      setSelectedApplied(draft.appliedResumeId || version);
-                      setApplyModal(true);
-                    }}
-                  >
+                  <Button variant="secondary" onClick={() => recordApplication()}>
                     Record submitted version
                   </Button>
                 </div>
@@ -744,10 +745,14 @@ export default function RoleDetail({
             </Button>
             <Button
               onClick={() => {
+                const current = latestDraft.current;
                 commit({
-                  ...draft,
-                  status: 'Applied',
-                  appliedAt: draft.appliedAt || localDate(),
+                  ...current,
+                  status:
+                    applyAsApplied || ['Saved', 'Preparing'].includes(current.status)
+                      ? 'Applied'
+                      : current.status,
+                  appliedAt: current.appliedAt || localDate(),
                   appliedResumeId: selectedApplied,
                 });
                 setApplyModal(false);
@@ -755,7 +760,9 @@ export default function RoleDetail({
               }}
             >
               <Check size={16} />
-              Mark applied
+              {applyAsApplied || ['Saved', 'Preparing'].includes(draft.status)
+                ? 'Mark applied'
+                : 'Save application record'}
             </Button>
           </div>
         </div>

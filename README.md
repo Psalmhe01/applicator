@@ -1,6 +1,6 @@
 # Applicator
 
-A private workspace for internships and jobs: experience bank, factual resume tailoring, PDF exports, application tracking, automatic cloud saving, and light/dark/system appearance. The owner manages invitations and shared provider allowances. Members see personal account controls.
+A private workspace for internships and jobs: experience bank, factual resume tailoring, PDF and editable Word exports, application tracking, automatic cloud saving, and light/dark/system appearance. The owner manages invitations and shared provider allowances. Members see personal account controls.
 
 ## Owner setup (once)
 
@@ -56,7 +56,27 @@ Only explicit organization/tailoring actions send text to Google. Source entry I
 
 AI tailoring explicitly asks for supported skills in strongest job-requirement match order. Grounding removes unverified skills while preserving that generated order. Manual resumes retain the order entered in the profile.
 
-PDF exports run locally, embed Noto Sans, and preserve the submitted resume version. Dark mode changes the application while keeping the resume preview on white paper.
+In Resume studio, choose **Current** or **Classic serif**, then download a PDF or an editable **Word (.docx)** document. Both exports run locally, use the selected layout, and require the accuracy review checkbox. Education appears before experience and projects.
+
+The layout is saved with each resume version; changing it requires another review. Submitted versions keep their layout: use **Duplicate to edit** to make changes. Dark mode changes the application while keeping the resume preview on white paper.
+
+Open a saved opportunity and use **Application status** above its detail tabs to move from Applied to Interviewing, Offer, Rejected, or Withdrawn. Changes save automatically and retain the application date and submitted resume; **Update application record** lets you adjust the submitted version without resetting the stage.
+
+## Navigation
+
+Each main screen has its own URL, so links can be bookmarked, refreshed, and opened directly. Browser Back and Forward follow screen changes.
+
+| URL | Screen |
+| --- | --- |
+| `/` | Overview |
+| `/opportunities` | Saved opportunities |
+| `/opportunities?tab=discover` | Discover opportunities |
+| `/experience` | Experience bank |
+| `/tracker` | Application tracker |
+| `/settings` | Account and appearance |
+| `/admin` | Owner controls; requires an owner account |
+
+Opening a saved opportunity adds the `job=<id>` query parameter to its source screen's URL and preserves other parameters, including the discovery tab. These links open the signed-in account's saved opportunity workspace. Existing Vercel rewrites and the local server's SPA fallback support direct links and refreshes.
 
 ## Run locally
 

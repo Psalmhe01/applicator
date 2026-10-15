@@ -1,4 +1,5 @@
 import { createRoot } from 'react-dom/client';
+import { BrowserRouter } from 'react-router';
 import App from './App';
 import './styles.css';
 import './theme.css';
@@ -9,8 +10,10 @@ function WorkspaceApp() {
 }
 createRoot(document.getElementById('root')!).render(
   <AuthProvider>
-    <AuthGate>
-      <WorkspaceApp />
-    </AuthGate>
+    <BrowserRouter>
+      <AuthGate>
+        <WorkspaceApp />
+      </AuthGate>
+    </BrowserRouter>
   </AuthProvider>,
 );

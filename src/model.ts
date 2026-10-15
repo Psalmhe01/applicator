@@ -46,6 +46,7 @@ const resumeEntrySchema = z.object({
 });
 export const resumeSchema = z.object({
   id: short,
+  layout: z.enum(['current', 'classic']).default('current'),
   name: short,
   email: short,
   phone: short,
@@ -96,6 +97,7 @@ export const workspaceSchema = z.object({
 export type Experience = z.infer<typeof experienceSchema>;
 export type Profile = z.infer<typeof profileSchema>;
 export type Resume = z.infer<typeof resumeSchema>;
+export type ResumeLayout = Resume['layout'];
 export type Job = z.infer<typeof jobSchema>;
 export type Workspace = z.infer<typeof workspaceSchema>;
 export type Status = (typeof statuses)[number];
@@ -155,6 +157,7 @@ export const safeLink = (value: string) => {
 export function manualResume(profile: Profile): Resume {
   return {
     id: id(),
+    layout: 'current',
     name: profile.name,
     email: profile.email,
     phone: profile.phone,

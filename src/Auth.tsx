@@ -1,9 +1,15 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createClient, type SupabaseClient, type Session } from '@supabase/supabase-js';
+import { useNavigate } from 'react-router';
 import { LogIn, Leaf, ShieldCheck } from 'lucide-react';
 import { api, configureTokenProvider, errorText } from './api';
 import { Button, Card, Field } from './components/ui';
 import { resolveAccount } from './accountAccess.mjs';
+import {
+  clearAuthReturnPath,
+  consumeAuthReturnPath,
+  rememberAuthReturnPath,
+} from './authReturn.mjs';
 export type AppAccount = {
   user: { id: string; email: string };
   role: 'admin' | 'member';
@@ -30,16 +36,34 @@ type AuthState = {
   signOut: () => Promise<void>;
 };
 export const AuthContext = createContext<AuthState | null>(null);
+function tabStorage() {
+  try {
+    return window.sessionStorage;
+  } catch {
+    return undefined;
+  }
+}
 // Fragment links keep invitation secrets out of request URLs. Retain the token in
 // this tab through OAuth, then consume it once membership is accepted.
 function readInvite() {
   if (typeof window === 'undefined') return '';
   const token = new URLSearchParams(window.location.hash.slice(1)).get('invite');
   if (token && /^[A-Za-z0-9_-]{43}$/.test(token)) {
-    sessionStorage.setItem('applicator.invite', token);
-    window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    try {
+      tabStorage()?.setItem('applicator.invite', token);
+    } catch {}
+    window.history.replaceState(
+      window.history.state,
+      '',
+      window.location.pathname + window.location.search,
+    );
+    return token;
   }
-  return sessionStorage.getItem('applicator.invite') || '';
+  try {
+    return tabStorage()?.getItem('applicator.invite') || '';
+  } catch {
+    return '';
+  }
 }
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [client, setClient] = useState<SupabaseClient | null>(null),
@@ -127,7 +151,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
   function clearInvitation() {
-    sessionStorage.removeItem('applicator.invite');
+    try {
+      tabStorage()?.removeItem('applicator.invite');
+    } catch {}
     setInvite('');
   }
   useEffect(() => {
@@ -196,12 +222,18 @@ export function useAuth() {
 // Workspace components mount only after the server verifies account membership.
 export function AuthGate({ children }: { children: ReactNode }) {
   const auth = useAuth();
+  const navigate = useNavigate();
   const [email, setEmail] = useState(''),
     [password, setPassword] = useState(''),
     [creating, setCreating] = useState(false),
     [busy, setBusy] = useState(false),
     [messageIsError, setMessageIsError] = useState(false),
     [message, setMessage] = useState('');
+  useEffect(() => {
+    if (!auth.account || auth.loading) return;
+    const path = consumeAuthReturnPath(tabStorage());
+    if (path) navigate(path, { replace: true });
+  }, [auth.account?.user.id, auth.loading, navigate]);
   if (auth.account && !auth.loading) return <>{children}</>;
   async function submit() {
     if (!auth.client) return;
@@ -209,6 +241,8 @@ export function AuthGate({ children }: { children: ReactNode }) {
     setMessage('');
     setMessageIsError(false);
     try {
+      if (creating)
+        rememberAuthReturnPath(tabStorage(), window.location.pathname, window.location.search);
       const result = creating
         ? await auth.client.auth.signUp({
             email,
@@ -222,6 +256,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
           'Check your inbox for an email confirmation link, then sign in. If no email arrives, contact the owner.',
         );
     } catch (e) {
+      if (creating) clearAuthReturnPath(tabStorage());
       setMessageIsError(true);
       setMessage(errorText(e));
     } finally {
@@ -318,13 +353,21 @@ export function AuthGate({ children }: { children: ReactNode }) {
                 busy={busy}
                 onClick={async () => {
                   setBusy(true);
-                  const { error } = await auth.client!.auth.signInWithOAuth({
-                    provider: 'google',
-                    options: { redirectTo: window.location.origin },
-                  });
-                  if (error) {
+                  rememberAuthReturnPath(
+                    tabStorage(),
+                    window.location.pathname,
+                    window.location.search,
+                  );
+                  try {
+                    const { error } = await auth.client!.auth.signInWithOAuth({
+                      provider: 'google',
+                      options: { redirectTo: window.location.origin },
+                    });
+                    if (error) throw error;
+                  } catch (e) {
+                    clearAuthReturnPath(tabStorage());
                     setMessageIsError(true);
-                    setMessage(error.message);
+                    setMessage(errorText(e));
                     setBusy(false);
                   }
                 }}

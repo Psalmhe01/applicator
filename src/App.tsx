@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router';
 import {
   ArrowRight,
   ArrowUpRight,
@@ -20,7 +21,7 @@ import {
   Sparkles,
   X,
 } from 'lucide-react';
-import { Button, Card, Empty } from './components/ui';
+import { Button, Card, Empty, Modal } from './components/ui';
 import { useWorkspace } from './useWorkspace';
 import { useAuth } from './Auth';
 import { useTheme } from './useTheme';
@@ -34,6 +35,14 @@ import { api } from './api';
 import { downloadFile, exportBackup } from './export';
 
 type View = 'home' | 'jobs' | 'profile' | 'tracker' | 'settings' | 'admin';
+const paths: Record<View, string> = {
+  home: '/',
+  jobs: '/opportunities',
+  profile: '/experience',
+  tracker: '/tracker',
+  settings: '/settings',
+  admin: '/admin',
+};
 const navItems = [
   { view: 'home' as const, label: 'Overview', icon: LayoutDashboard },
   { view: 'jobs' as const, label: 'Opportunities', icon: BriefcaseBusiness },
@@ -45,14 +54,24 @@ const navItems = [
   },
 ];
 export default function App() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const auth = useAuth();
   const store = useWorkspace();
   const { workspace } = store;
   useTheme(workspace.preferences.theme);
-  const [view, setView] = useState<View>('home'),
-    [activeJob, setActiveJob] = useState<string | null>(null),
-    [discover, setDiscover] = useState(false),
-    [menu, setMenu] = useState(false),
+  const pathname = location.pathname.replace(/\/+$/, '').toLowerCase() || '/';
+  const search = new URLSearchParams(location.search);
+  const activeJob = search.get('job');
+  const discover = search.get('tab') === 'discover';
+  const active = workspace.jobs.find((j) => j.id === activeJob);
+  const pageTitle =
+    pathname === paths.admin
+      ? 'Owner controls'
+      : pathname === paths.settings
+        ? 'Settings'
+        : navItems.find((item) => paths[item.view] === pathname)?.label || 'Page not found';
+  const [menu, setMenu] = useState(false),
     [notice, setNotice] = useState(''),
     [health, setHealth] = useState({
       aiConfigured: false,
@@ -60,6 +79,40 @@ export default function App() {
       reachable: false,
     });
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const main = useRef<HTMLElement>(null);
+  const closeJob = useCallback(
+    (replace = false) => {
+      if (!replace && location.state?.opportunityOrigin) {
+        navigate(-1);
+        return;
+      }
+      const params = new URLSearchParams(location.search);
+      params.delete('job');
+      navigate(
+        { pathname: location.pathname, search: params.toString() },
+        {
+          replace: true,
+          state: null,
+        },
+      );
+    },
+    [location.pathname, location.search, location.state, navigate],
+  );
+  useEffect(() => {
+    setMenu(false);
+  }, [location.key]);
+  useEffect(() => {
+    if (location.pathname !== pathname && Object.values(paths).includes(pathname))
+      navigate(
+        { pathname, search: location.search, hash: location.hash },
+        { replace: true, state: location.state },
+      );
+  }, [location, pathname, navigate]);
+  useEffect(() => {
+    document.title = `${pageTitle} · Applicator`;
+    window.scrollTo(0, 0);
+    main.current?.focus({ preventScroll: true });
+  }, [pathname, pageTitle, store.ready]);
   function notify(text: string) {
     setNotice(text);
     if (timer.current) clearTimeout(timer.current);
@@ -88,10 +141,10 @@ export default function App() {
     };
   }, []);
   useEffect(() => {
-    if (!activeJob) return;
+    if (!active) return;
     function key(e: KeyboardEvent) {
       if (e.key === 'Escape' && !document.querySelector('[data-state="open"][role="dialog"]'))
-        setActiveJob(null);
+        closeJob();
     }
     document.addEventListener('keydown', key);
     const before = document.body.style.overflow;
@@ -100,16 +153,21 @@ export default function App() {
       document.removeEventListener('keydown', key);
       document.body.style.overflow = before;
     };
-  }, [activeJob]);
+  }, [active?.id, closeJob]);
   function go(next: View, isDiscover = false) {
-    setView(next);
-    setDiscover(isDiscover);
-    setActiveJob(null);
+    navigate(paths[next] + (next === 'jobs' && isDiscover ? '?tab=discover' : ''));
     setMenu(false);
-    window.scrollTo(0, 0);
   }
-  const active = workspace.jobs.find((j) => j.id === activeJob);
-  const open = (job: Job) => setActiveJob(job.id);
+  const open = (job: Job) => {
+    const params = new URLSearchParams(location.search);
+    params.set('job', job.id);
+    navigate(
+      { pathname: location.pathname, search: params.toString() },
+      {
+        state: { opportunityOrigin: location.key },
+      },
+    );
+  };
   const firstName = workspace.profile.name.trim().split(/\s+/)[0];
   const prepared = workspace.jobs.filter(
     (j) => j.resumes.some((r) => r.reviewed) && ['Saved', 'Preparing'].includes(j.status),
@@ -142,38 +200,33 @@ export default function App() {
     <div className="app-shell">
       {menu && <div className="mobile-scrim" onClick={() => setMenu(false)} />}
       <aside className={`sidebar ${menu ? 'open' : ''}`}>
-        <button className="brand" onClick={() => go('home')} aria-label="Applicator overview">
+        <Link className="brand" to={paths.home} aria-label="Applicator overview">
           <span className="brand-mark">
             a<span />
           </span>
           <span>
             applicator<span className="brand-period">.</span>
           </span>
-        </button>
+        </Link>
         <div className="workspace-label">
           <span className="workspace-dot" />
           PERSONAL WORKSPACE
         </div>
         <nav aria-label="Main navigation">
           {navItems.map(({ view: key, label, icon: Icon }) => (
-            <button
-              key={key}
-              aria-current={view === key ? 'page' : undefined}
-              className={view === key ? 'active' : ''}
-              onClick={() => go(key)}
-            >
+            <NavLink key={key} to={paths[key]} end onClick={() => setMenu(false)}>
               <Icon size={19} strokeWidth={1.7} />
               {label}
               {key === 'jobs' && !!workspace.jobs.length && (
                 <span className="nav-count">{workspace.jobs.length}</span>
               )}
-            </button>
+            </NavLink>
           ))}
           {auth.account?.role === 'admin' && (
-            <button className={view === 'admin' ? 'active' : ''} onClick={() => go('admin')}>
+            <NavLink to={paths.admin} end onClick={() => setMenu(false)}>
               <Settings2 size={19} />
               Owner controls
-            </button>
+            </NavLink>
           )}
         </nav>
         <div className="sidebar-note">
@@ -188,16 +241,16 @@ export default function App() {
             A little less busywork.
             <br />A little more possibility.
           </p>
-          <button onClick={() => go('profile')}>
+          <Link to={paths.profile} onClick={() => setMenu(false)}>
             Build your experience bank
             <ArrowUpRight size={14} />
-          </button>
+          </Link>
         </div>
         <div className="sidebar-bottom">
-          <button className={view === 'settings' ? 'active' : ''} onClick={() => go('settings')}>
+          <NavLink to={paths.settings} end onClick={() => setMenu(false)}>
             <Settings2 size={18} />
             Account & appearance
-          </button>
+          </NavLink>
           <div className="user-row">
             <div className="user-avatar">{firstName ? firstName[0].toUpperCase() : 'Y'}</div>
             <div>
@@ -218,19 +271,14 @@ export default function App() {
             <button
               className="icon-button mobile-menu"
               aria-label="Open navigation"
+              aria-expanded={menu}
               onClick={() => setMenu(!menu)}
             >
               <Menu size={21} />
             </button>
             <span>My workspace</span>
             <ChevronRight size={13} />
-            <strong>
-              {view === 'admin'
-                ? 'Owner controls'
-                : view === 'settings'
-                  ? 'Settings'
-                  : navItems.find((n) => n.view === view)?.label}
-            </strong>
+            <strong>{pageTitle}</strong>
           </div>
           <div className="topbar-right">
             <span className="save-indicator">
@@ -247,7 +295,7 @@ export default function App() {
             </button>
           </div>
         </header>
-        <main>
+        <main ref={main} tabIndex={-1}>
           {store.storageError && (
             <div className="error-banner" role="alert">
               {store.storageError}
@@ -288,290 +336,336 @@ export default function App() {
               while the connection returns.
             </div>
           )}
-          {view === 'home' && (
-            <>
-              <div className="overview-heading">
-                <div>
-                  <div className="eyebrow">YOUR NEXT CHAPTER</div>
-                  <h1>{firstName ? `Welcome back, ${firstName}.` : 'A little momentum.'}</h1>
-                  <p>One place for the opportunities ahead.</p>
-                </div>
-                <Button variant="secondary" onClick={() => go('jobs')}>
-                  <Plus size={16} />
-                  Add an opportunity
-                </Button>
-              </div>
-              <section className="welcome-banner">
-                <div className="welcome-copy">
-                  <div className="banner-label">
-                    <span />
-                    GOOD THINGS TAKE A LITTLE PREPARATION
-                  </div>
-                  <h2>
-                    Your experience.
-                    <br />
-                    Their opportunity.
-                    <br />
-                    <em>A better connection.</em>
-                  </h2>
-                  <p>
-                    Find your next role, put your best work forward,
-                    <br className="desktop-break" /> and keep every application in one thoughtful
-                    place.
-                  </p>
-                  <Button onClick={() => go(completeProfile ? 'jobs' : 'profile', completeProfile)}>
-                    {completeProfile ? 'Explore opportunities' : 'Start with your experience'}
-                    <ArrowRight size={17} />
-                  </Button>
-                </div>
-                <div className="banner-art" aria-hidden="true">
-                  <div className="art-orbit orbit-one" />
-                  <div className="art-orbit orbit-two" />
-                  <span className="art-dot dot-one" />
-                  <span className="art-dot dot-two" />
-                  <div className="art-paper">
-                    <div className="art-paper-head">
-                      <div className="art-avatar" />
-                      <div>
-                        <b />
-                        <i />
-                      </div>
-                      <CheckCircle2 size={20} />
-                    </div>
-                    <div className="art-rule" />
-                    <div className="art-text long" />
-                    <div className="art-text" />
-                    <div className="art-text medium" />
-                    <div className="art-pills">
-                      <i />
-                      <i />
-                      <i />
-                    </div>
-                    <div className="art-rule" />
-                    <div className="art-text medium" />
-                    <div className="art-text long" />
-                    <div className="art-text" />
-                  </div>
-                  <div className="art-badge">
-                    <span>
-                      <Sparkles size={17} />
-                    </span>
+          <Routes>
+            <Route
+              path={paths.home}
+              element={
+                <>
+                  <div className="overview-heading">
                     <div>
-                      <strong>Made for your next move</strong>
-                      <small>Your work, thoughtfully tailored.</small>
+                      <div className="eyebrow">YOUR NEXT CHAPTER</div>
+                      <h1>{firstName ? `Welcome back, ${firstName}.` : 'A little momentum.'}</h1>
+                      <p>One place for the opportunities ahead.</p>
                     </div>
-                  </div>
-                  <div className="art-leaf">
-                    <Leaf size={27} strokeWidth={1.2} />
-                  </div>
-                  <span className="art-star">✳</span>
-                </div>
-              </section>
-              <div className="metrics-grid">
-                <Card className="metric">
-                  <div>
-                    <span>In your pipeline</span>
-                    <strong>
-                      {workspace.jobs.length}
-                      <small>saved opportunities</small>
-                    </strong>
-                  </div>
-                  <span className="metric-icon peach">
-                    <Bookmark size={21} />
-                  </span>
-                </Card>
-                <Card className="metric">
-                  <div>
-                    <span>Ready for your next move</span>
-                    <strong>
-                      {prepared.length}
-                      <small>reviewed resumes</small>
-                    </strong>
-                  </div>
-                  <span className="metric-icon sage">
-                    <FileText size={21} />
-                  </span>
-                </Card>
-                <Card className="metric">
-                  <div>
-                    <span>Applications sent</span>
-                    <strong>
-                      {applied.length}
-                      <small>
-                        {due.length
-                          ? `${due.length} follow-up${due.length === 1 ? '' : 's'} due`
-                          : 'one step at a time'}
-                      </small>
-                    </strong>
-                  </div>
-                  <span className="metric-icon lavender">
-                    <ArrowUpRight size={21} />
-                  </span>
-                </Card>
-              </div>
-              <div className="overview-grid">
-                <section>
-                  <div className="section-heading section-title">
-                    <div>
-                      <h3>Your opportunities</h3>
-                      <p className="muted">The next good thing might be right here.</p>
-                    </div>
-                    <Button variant="ghost" onClick={() => go('jobs')}>
-                      View all
-                      <ArrowRight size={15} />
+                    <Button variant="secondary" onClick={() => go('jobs')}>
+                      <Plus size={16} />
+                      Add an opportunity
                     </Button>
                   </div>
-                  {workspace.jobs.length ? (
-                    <div className="jobs-grid">
-                      {workspace.jobs.slice(0, 4).map((j) => (
-                        <JobCard key={j.id} job={j} open={() => open(j)} />
-                      ))}
+                  <section className="welcome-banner">
+                    <div className="welcome-copy">
+                      <div className="banner-label">
+                        <span />
+                        GOOD THINGS TAKE A LITTLE PREPARATION
+                      </div>
+                      <h2>
+                        Your experience.
+                        <br />
+                        Their opportunity.
+                        <br />
+                        <em>A better connection.</em>
+                      </h2>
+                      <p>
+                        Find your next role, put your best work forward,
+                        <br className="desktop-break" /> and keep every application in one
+                        thoughtful place.
+                      </p>
+                      <Button
+                        onClick={() => go(completeProfile ? 'jobs' : 'profile', completeProfile)}
+                      >
+                        {completeProfile ? 'Explore opportunities' : 'Start with your experience'}
+                        <ArrowRight size={17} />
+                      </Button>
                     </div>
-                  ) : (
-                    <Card className="dashboard-empty">
-                      <Empty
-                        icon={<BriefcaseBusiness size={26} />}
-                        title="Make your first move."
-                        description="Find a role that feels like a good fit, or bring a job link you’ve already saved."
-                        action={
-                          <Button variant="secondary" onClick={() => go('jobs', true)}>
-                            Explore openings
-                            <ArrowRight size={16} />
-                          </Button>
-                        }
-                      />
-                    </Card>
-                  )}
-                </section>
-                <div className="stack overview-right">
-                  <Card className="next-steps">
-                    <div className="section-heading">
-                      <h3>A good place to start</h3>
-                      <span className="small muted">
-                        {
-                          [completeProfile, !!workspace.jobs.length, !!prepared.length].filter(
-                            Boolean,
-                          ).length
-                        }
-                        /3
-                      </span>
-                    </div>
-                    {[
-                      {
-                        done: completeProfile,
-                        title: 'Put your experience in one place',
-                        subtitle: 'Your resume, projects, and the rest.',
-                        action: () => go('profile'),
-                      },
-                      {
-                        done: !!workspace.jobs.length,
-                        title: 'Save an opportunity',
-                        subtitle: 'Find an opening that interests you.',
-                        action: () => go('jobs', true),
-                      },
-                      {
-                        done: !!prepared.length,
-                        title: 'Prepare your first resume',
-                        subtitle: 'Review, download, and make your move.',
-                        action: () =>
-                          workspace.jobs.length ? open(workspace.jobs[0]) : go('jobs'),
-                      },
-                    ].map((item, i) => (
-                      <button className="step" key={item.title} onClick={item.action}>
-                        <span className={item.done ? 'step-number done' : 'step-number'}>
-                          {item.done ? <Check size={14} /> : i + 1}
-                        </span>
+                    <div className="banner-art" aria-hidden="true">
+                      <div className="art-orbit orbit-one" />
+                      <div className="art-orbit orbit-two" />
+                      <span className="art-dot dot-one" />
+                      <span className="art-dot dot-two" />
+                      <div className="art-paper">
+                        <div className="art-paper-head">
+                          <div className="art-avatar" />
+                          <div>
+                            <b />
+                            <i />
+                          </div>
+                          <CheckCircle2 size={20} />
+                        </div>
+                        <div className="art-rule" />
+                        <div className="art-text long" />
+                        <div className="art-text" />
+                        <div className="art-text medium" />
+                        <div className="art-pills">
+                          <i />
+                          <i />
+                          <i />
+                        </div>
+                        <div className="art-rule" />
+                        <div className="art-text medium" />
+                        <div className="art-text long" />
+                        <div className="art-text" />
+                      </div>
+                      <div className="art-badge">
                         <span>
-                          <strong>{item.title}</strong>
-                          <small>{item.subtitle}</small>
+                          <Sparkles size={17} />
                         </span>
-                        <ChevronRight size={15} />
-                      </button>
-                    ))}
-                  </Card>
-                  <Card className="followups">
-                    <div className="section-heading">
-                      <h3>On the horizon</h3>
-                      <CalendarDays size={18} />
+                        <div>
+                          <strong>Made for your next move</strong>
+                          <small>Your work, thoughtfully tailored.</small>
+                        </div>
+                      </div>
+                      <div className="art-leaf">
+                        <Leaf size={27} strokeWidth={1.2} />
+                      </div>
+                      <span className="art-star">✳</span>
                     </div>
-                    {nextFollowUps.length ? (
-                      <div className="followup-list">
-                        {nextFollowUps.slice(0, 3).map((j) => (
-                          <button key={j.id} onClick={() => open(j)}>
-                            <div>
-                              <strong>{j.company}</strong>
-                              <small>{j.title}</small>
-                            </div>
-                            <span className={j.followUp <= localDate() ? 'due' : 'muted'}>
-                              {formatDate(j.followUp)}
+                  </section>
+                  <div className="metrics-grid">
+                    <Card className="metric">
+                      <div>
+                        <span>In your pipeline</span>
+                        <strong>
+                          {workspace.jobs.length}
+                          <small>saved opportunities</small>
+                        </strong>
+                      </div>
+                      <span className="metric-icon peach">
+                        <Bookmark size={21} />
+                      </span>
+                    </Card>
+                    <Card className="metric">
+                      <div>
+                        <span>Ready for your next move</span>
+                        <strong>
+                          {prepared.length}
+                          <small>reviewed resumes</small>
+                        </strong>
+                      </div>
+                      <span className="metric-icon sage">
+                        <FileText size={21} />
+                      </span>
+                    </Card>
+                    <Card className="metric">
+                      <div>
+                        <span>Applications sent</span>
+                        <strong>
+                          {applied.length}
+                          <small>
+                            {due.length
+                              ? `${due.length} follow-up${due.length === 1 ? '' : 's'} due`
+                              : 'one step at a time'}
+                          </small>
+                        </strong>
+                      </div>
+                      <span className="metric-icon lavender">
+                        <ArrowUpRight size={21} />
+                      </span>
+                    </Card>
+                  </div>
+                  <div className="overview-grid">
+                    <section>
+                      <div className="section-heading section-title">
+                        <div>
+                          <h3>Your opportunities</h3>
+                          <p className="muted">The next good thing might be right here.</p>
+                        </div>
+                        <Button variant="ghost" onClick={() => go('jobs')}>
+                          View all
+                          <ArrowRight size={15} />
+                        </Button>
+                      </div>
+                      {workspace.jobs.length ? (
+                        <div className="jobs-grid">
+                          {workspace.jobs.slice(0, 4).map((j) => (
+                            <JobCard key={j.id} job={j} open={() => open(j)} />
+                          ))}
+                        </div>
+                      ) : (
+                        <Card className="dashboard-empty">
+                          <Empty
+                            icon={<BriefcaseBusiness size={26} />}
+                            title="Make your first move."
+                            description="Find a role that feels like a good fit, or bring a job link you’ve already saved."
+                            action={
+                              <Button variant="secondary" onClick={() => go('jobs', true)}>
+                                Explore openings
+                                <ArrowRight size={16} />
+                              </Button>
+                            }
+                          />
+                        </Card>
+                      )}
+                    </section>
+                    <div className="stack overview-right">
+                      <Card className="next-steps">
+                        <div className="section-heading">
+                          <h3>A good place to start</h3>
+                          <span className="small muted">
+                            {
+                              [completeProfile, !!workspace.jobs.length, !!prepared.length].filter(
+                                Boolean,
+                              ).length
+                            }
+                            /3
+                          </span>
+                        </div>
+                        {[
+                          {
+                            done: completeProfile,
+                            title: 'Put your experience in one place',
+                            subtitle: 'Your resume, projects, and the rest.',
+                            action: () => go('profile'),
+                          },
+                          {
+                            done: !!workspace.jobs.length,
+                            title: 'Save an opportunity',
+                            subtitle: 'Find an opening that interests you.',
+                            action: () => go('jobs', true),
+                          },
+                          {
+                            done: !!prepared.length,
+                            title: 'Prepare your first resume',
+                            subtitle: 'Review, download, and make your move.',
+                            action: () =>
+                              workspace.jobs.length ? open(workspace.jobs[0]) : go('jobs'),
+                          },
+                        ].map((item, i) => (
+                          <button className="step" key={item.title} onClick={item.action}>
+                            <span className={item.done ? 'step-number done' : 'step-number'}>
+                              {item.done ? <Check size={14} /> : i + 1}
                             </span>
+                            <span>
+                              <strong>{item.title}</strong>
+                              <small>{item.subtitle}</small>
+                            </span>
+                            <ChevronRight size={15} />
                           </button>
                         ))}
-                      </div>
-                    ) : (
-                      <>
-                        <div className="followup-empty">
-                          <span />
-                          <span />
-                          <span />
+                      </Card>
+                      <Card className="followups">
+                        <div className="section-heading">
+                          <h3>On the horizon</h3>
+                          <CalendarDays size={18} />
                         </div>
-                        <p className="muted small">
-                          Add a follow-up date to an application and we’ll keep it in view here.
-                        </p>
-                      </>
-                    )}
-                  </Card>
-                  <div className="connection-link">
-                    <Cloud size={17} />
-                    <span>Your progress, saved to your account.</span>
-                    <button onClick={() => go('settings')}>
-                      Account settings
-                      <ArrowUpRight size={13} />
-                    </button>
+                        {nextFollowUps.length ? (
+                          <div className="followup-list">
+                            {nextFollowUps.slice(0, 3).map((j) => (
+                              <button key={j.id} onClick={() => open(j)}>
+                                <div>
+                                  <strong>{j.company}</strong>
+                                  <small>{j.title}</small>
+                                </div>
+                                <span className={j.followUp <= localDate() ? 'due' : 'muted'}>
+                                  {formatDate(j.followUp)}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <>
+                            <div className="followup-empty">
+                              <span />
+                              <span />
+                              <span />
+                            </div>
+                            <p className="muted small">
+                              Add a follow-up date to an application and we’ll keep it in view here.
+                            </p>
+                          </>
+                        )}
+                      </Card>
+                      <div className="connection-link">
+                        <Cloud size={17} />
+                        <span>Your progress, saved to your account.</span>
+                        <button onClick={() => go('settings')}>
+                          Account settings
+                          <ArrowUpRight size={13} />
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-            </>
-          )}
-          {view === 'jobs' && (
-            <JobsView
-              key={`jobs-${discover}`}
-              jobs={workspace.jobs}
-              save={store.saveJob}
-              open={open}
-              notify={notify}
-              initialDiscover={discover}
+                </>
+              }
             />
-          )}
-          {view === 'tracker' && (
-            <JobsView
-              key="tracker"
-              jobs={workspace.jobs}
-              save={store.saveJob}
-              open={open}
-              notify={notify}
-              tracker
+            <Route
+              path={paths.jobs}
+              element={
+                <JobsView
+                  key="jobs"
+                  jobs={workspace.jobs}
+                  save={store.saveJob}
+                  open={open}
+                  notify={notify}
+                  discover={discover}
+                />
+              }
             />
-          )}
-          {view === 'profile' && (
-            <ProfileView
-              profile={workspace.profile}
-              save={store.saveProfile}
-              aiConfigured={health.aiConfigured}
-              notify={notify}
+            <Route
+              path={paths.tracker}
+              element={
+                <JobsView
+                  key="tracker"
+                  jobs={workspace.jobs}
+                  save={store.saveJob}
+                  open={open}
+                  notify={notify}
+                  tracker
+                />
+              }
             />
-          )}
-          {view === 'settings' && (
-            <SettingsView
-              workspace={workspace}
-              replace={store.replace}
-              setTheme={store.setTheme}
-              saveNow={store.saveNow}
-              loadCloud={store.loadCloud}
-              notify={notify}
+            <Route
+              path={paths.profile}
+              element={
+                <ProfileView
+                  profile={workspace.profile}
+                  save={store.saveProfile}
+                  aiConfigured={health.aiConfigured}
+                  notify={notify}
+                />
+              }
             />
-          )}
-          {view === 'admin' && auth.account?.role === 'admin' && <AdminView notify={notify} />}
+            <Route
+              path={paths.settings}
+              element={
+                <SettingsView
+                  workspace={workspace}
+                  replace={store.replace}
+                  setTheme={store.setTheme}
+                  saveNow={store.saveNow}
+                  loadCloud={store.loadCloud}
+                  notify={notify}
+                />
+              }
+            />
+            <Route
+              path={paths.admin}
+              element={
+                auth.account?.role === 'admin' ? (
+                  <AdminView notify={notify} />
+                ) : (
+                  <Card className="large-empty">
+                    <h1>Owner access required.</h1>
+                    <p>Owner controls are available to the workspace owner.</p>
+                    <Link className="button secondary" to={paths.home}>
+                      Return to overview
+                    </Link>
+                  </Card>
+                )
+              }
+            />
+            <Route
+              path="*"
+              element={
+                <Card className="large-empty">
+                  <h1>Page not found.</h1>
+                  <p>This address does not match a page in your workspace.</p>
+                  <Link className="button secondary" to={paths.home}>
+                    Return to overview
+                  </Link>
+                </Card>
+              }
+            />
+          </Routes>
           {store.conflict && (
             <div className="inline-note">
               Sync is paused. Export your current work in Account settings, then load the cloud
@@ -594,15 +688,25 @@ export default function App() {
           save={store.saveJob}
           remove={() => {
             store.removeJob(active.id);
-            setActiveJob(null);
+            closeJob(true);
             notify('Opportunity removed.');
           }}
-          close={() => setActiveJob(null)}
+          close={() => closeJob()}
           aiConfigured={health.aiConfigured}
           notify={notify}
           onProfile={() => go('profile')}
         />
       )}
+      <Modal
+        open={!!activeJob && !active}
+        onClose={() => closeJob()}
+        title="Opportunity not found"
+        description="This opportunity may have been removed or belongs to a different account."
+      >
+        <Button variant="secondary" onClick={() => closeJob()}>
+          Return to workspace
+        </Button>
+      </Modal>
       {notice && (
         <div className="toast" role="status">
           <span>{notice}</span>
