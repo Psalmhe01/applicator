@@ -123,7 +123,7 @@ test('automatic feeds share cache, tolerate partial failures, recheck full detai
   await assert.rejects(discovery.detail(a.jobs[0].id), /no longer listed/);
   clock += 16 * 60000;
   assert.equal((await discovery.search()).total, 0);
-  await assert.rejects(discovery.detail(a.jobs[0].id), /no longer in/);
+  await assert.rejects(discovery.detail(a.jobs[0].id), /no longer listed/);
 });
 test('a total board outage reports an error rather than presenting fake or stale listings', async () => {
   const discovery = createDiscovery({
@@ -131,4 +131,56 @@ test('a total board outage reports an error rather than presenting fake or stale
     fetcher: async () => ({ ok: false, status: 503 }),
   });
   await assert.rejects(discovery.search(), /Could not reach/);
+});
+
+test('a cold job-details request fetches only its employer posting without loading the feed', async () => {
+  const urls = [];
+  const discovery = createDiscovery({
+    catalog: [gh, lever],
+    fetcher: async (url) => {
+      urls.push(url);
+      assert.equal(url, 'https://boards-api.greenhouse.io/v1/boards/example/jobs/123?content=true');
+      return new Response(JSON.stringify(raw), { headers: { 'Content-Type': 'application/json' } });
+    },
+  });
+  const detail = await discovery.detail('greenhouse-example-123');
+  assert.equal(detail.title, raw.title);
+  assert.equal(detail.description, 'Python and SQL');
+  assert.equal(urls.length, 1);
+  await assert.rejects(
+    discovery.detail('greenhouse-unlisted-company-123'),
+    (error) => error.status === 404,
+  );
+  await assert.rejects(
+    discovery.detail('greenhouse-example-../123'),
+    (error) => error.status === 404,
+  );
+  assert.equal(urls.length, 1);
+});
+
+test('cold details support Lever IDs and reject mismatched or unreadable provider replies', async () => {
+  const posting = {
+    id: 'abc-123',
+    text: 'Engineering Intern',
+    applyUrl: 'https://example.com/apply',
+    descriptionPlain: 'Full requirements',
+  };
+  let invalid = false;
+  const discovery = createDiscovery({
+    catalog: [lever],
+    fetcher: async (url) => {
+      assert.equal(url, 'https://api.lever.co/v0/postings/sample/abc-123?mode=json');
+      return invalid
+        ? new Response('The page could not be found', { headers: { 'Content-Type': 'text/plain' } })
+        : new Response(JSON.stringify(posting));
+    },
+  });
+  assert.equal((await discovery.detail('lever-sample-abc-123')).description, 'Full requirements');
+  posting.id = 'different-id';
+  await assert.rejects(discovery.detail('lever-sample-abc-123'), (error) => error.status === 404);
+  invalid = true;
+  await assert.rejects(
+    discovery.detail('lever-sample-abc-123'),
+    (error) => error.status === 502 && /unreadable/.test(error.message),
+  );
 });

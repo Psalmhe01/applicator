@@ -20,6 +20,7 @@ import {
 } from './domain.mjs';
 import { generateJson } from './gemini.mjs';
 import { createDiscovery } from './openings.mjs';
+import { rankOpenings } from './relevance.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 dotenv.config({ path: path.join(root, '.env'), quiet: true });
@@ -198,7 +199,7 @@ export function createApp({
       });
     await platform.reserveAi(req.identity.id);
     const generated = await ai(
-      'You are a resume editor. Select and reorder up to 6 relevant entries by sourceId from the supplied profile. Tailor concise bullets for this job using ONLY facts in those source entries. NEVER invent metrics, tools, credentials, dates, employers, or responsibilities. Select skills only from the supplied skills lists, with the exact spelling. Write a short factual summary. matches explains supported requirements, gaps explains missing or unverified requirements without adding them to the resume. changes explains actual editorial choices. Each entry needs a reason. If a requirement is not evidenced, list it in gaps. Do not claim ATS scores or hiring probabilities. Keep the resume concise for an internship/early-career application.',
+      'You are a resume editor. Select and reorder up to 6 relevant entries by sourceId from the supplied profile. Tailor concise bullets for this job using ONLY facts in those source entries. NEVER invent metrics, tools, credentials, dates, employers, or responsibilities. Select skills only from the supplied skills lists, with the exact spelling. Order the selected skills by relevance to the job requirements, placing the strongest supported matches first. Write a short factual summary. matches explains supported requirements, gaps explains missing or unverified requirements without adding them to the resume. changes explains actual editorial choices. Each entry needs a reason. If a requirement is not evidenced, list it in gaps. Do not claim ATS scores or hiring probabilities. Keep the resume concise for an internship/early-career application.',
       { profile: { ...profile, resumeText: '' }, job },
       generatedSchema,
     );
@@ -210,11 +211,31 @@ export function createApp({
       provider = req.query.provider === 'adzuna' ? 'adzuna' : 'catalog';
     if (!settings[provider === 'adzuna' ? 'adzunaEnabled' : 'catalogEnabled'])
       throw httpError(403, 'The owner has paused this job source.');
-    res.json(
-      provider === 'adzuna'
-        ? await adzuna.search(req.query)
-        : { ...(await discovery.search(req.query)), provider: 'catalog' },
+    // Bind ranking to this verified account; do not accept another user's profile ID.
+    const profile =
+      req.query.sort === 'profile'
+        ? (await platform.load(req.identity.id)).workspace?.profile
+        : undefined;
+    if (provider === 'catalog') {
+      res.json({ ...(await discovery.search(req.query, profile)), provider: 'catalog' });
+      return;
+    }
+    // Adzuna exposes provider pages, not its entire index. Personalize only the returned page.
+    // The provider query and shared cache contain no profile or personalized match data.
+    const feed = await adzuna.search(
+      req.query.sort === 'profile' ? { ...req.query, sort: 'relevance' } : req.query,
     );
+    if (req.query.sort !== 'profile') {
+      res.json(feed);
+      return;
+    }
+    const ranking = rankOpenings(feed.jobs, profile);
+    res.json({
+      ...feed,
+      jobs: ranking.jobs,
+      rankingScope: 'page',
+      profileRankingAvailable: ranking.available,
+    });
   });
   app.get('/api/openings/:id', async (req, res) => {
     const provider = req.params.id.startsWith('adzuna-') ? 'adzuna' : 'catalog',

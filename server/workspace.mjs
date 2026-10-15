@@ -60,6 +60,8 @@ const job = z.object({
   id: short,
   title: short,
   company: short,
+  department: short.default(''),
+  departmentGroups: z.array(short).max(20).default([]),
   location: short,
   url: short,
   description: long,

@@ -8,7 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "start": "node --use-system-ca server/index.mjs",
     "test": "node --test tests/*.test.mjs",
-    "format": "prettier --write \"server/*.mjs\" \"src/*.{ts,tsx,mjs,mts}\" \"src/theme.css\" \"api/*.mjs\" \"tests/*.test.mjs\" vercel.json"
+    "format": "prettier --write \"server/*.mjs\" \"shared/*.{mjs,mts}\" \"src/*.{ts,tsx,mjs,mts}\" \"src/theme.css\" \"api/*.mjs\" \"tests/*.test.mjs\" vercel.json"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",

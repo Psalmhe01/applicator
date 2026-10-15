@@ -1,4 +1,6 @@
 import { cleanHtml } from './domain.mjs';
+import { rankOpenings } from './relevance.mjs';
+import { departmentGroups, matchesDepartment, validateDepartment } from '../shared/departments.mjs';
 
 // Public employer boards, maintained here so applicants never need to enter slugs.
 export const sources = [
@@ -104,6 +106,11 @@ export function normalizeOpening(raw, source) {
         .slice(0, 40000);
   // Lever's public API does not promise a posting timestamp. Do not invent one.
   const updatedAt = greenhouse && Number.isFinite(Date.parse(raw.updated_at)) ? raw.updated_at : '';
+  const department = text(
+    greenhouse
+      ? raw.departments?.map((d) => d.name).join(', ')
+      : raw.categories?.department || raw.categories?.team,
+  );
   return {
     id: `${source.provider}-${source.slug}-${raw.id}`,
     title,
@@ -123,11 +130,8 @@ export function normalizeOpening(raw, source) {
     requirementsComplete: true,
     careerLevel: careerLevel(title),
     workArrangement: workArrangement(location, greenhouse ? '' : raw.workplaceType),
-    department: text(
-      greenhouse
-        ? raw.departments?.map((d) => d.name).join(', ')
-        : raw.categories?.department || raw.categories?.team,
-    ),
+    department,
+    departmentGroups: departmentGroups(title, department),
     sourceKey: `${source.provider}:${source.slug}`,
     postingId: String(raw.id),
   };
@@ -151,9 +155,16 @@ async function readBoard(source, fetcher, id, deadline) {
     error.status = response.status === 404 ? 404 : 502;
     throw error;
   }
-  return response.json();
+  try {
+    return await response.json();
+  } catch {
+    const error = new Error('The company board returned an unreadable response. Try again later.');
+    error.status = 502;
+    throw error;
+  }
 }
-export function selectOpenings(jobs, params = {}) {
+export function selectOpenings(jobs, params = {}, profile) {
+  validateDepartment(params.department);
   const q = text(params.q, 300).trim().toLowerCase().split(/\s+/).filter(Boolean),
     location = text(params.location).trim().toLowerCase();
   const level = ['All', 'Early career', 'Internship', 'Entry level', 'Other roles'].includes(
@@ -168,6 +179,7 @@ export function selectOpenings(jobs, params = {}) {
       (!location || job.location.toLowerCase().includes(location)) &&
       (!params.company || job.company === params.company) &&
       (!params.work || job.workArrangement === params.work) &&
+      matchesDepartment(job, params.department) &&
       (level === 'All' ||
         (level === 'Early career' && job.careerLevel !== 'Other roles') ||
         job.careerLevel === level)
@@ -184,11 +196,14 @@ export function selectOpenings(jobs, params = {}) {
       a.title.localeCompare(b.title)
     );
   });
+  // Rank all filtered catalog results before slicing a page, with newest as the tie-breaker.
+  const ranking = params.sort === 'profile' ? rankOpenings(filtered, profile) : null;
+  const ordered = ranking ? ranking.jobs : filtered;
   const pageSize = 24,
     pages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const page = Math.min(pages, Math.max(1, Math.floor(Number(params.page) || 1)));
   return {
-    jobs: filtered
+    jobs: ordered
       .slice((page - 1) * pageSize, page * pageSize)
       .map(({ sourceKey, postingId, ...job }) => ({
         ...job,
@@ -198,6 +213,7 @@ export function selectOpenings(jobs, params = {}) {
     page,
     pages,
     pageSize,
+    ...(ranking ? { rankingScope: 'catalog', profileRankingAvailable: ranking.available } : {}),
   };
 }
 export function createDiscovery({ catalog = sources, fetcher = fetch, now = Date.now } = {}) {
@@ -259,10 +275,10 @@ export function createDiscovery({ catalog = sources, fetcher = fetch, now = Date
     }
   }
   return {
-    async search(params = {}) {
+    async search(params = {}, profile) {
       const snapshot = await load(params.refresh === '1');
       return {
-        ...selectOpenings(snapshot.jobs, params),
+        ...selectOpenings(snapshot.jobs, params, profile),
         companies: [...new Set(snapshot.jobs.map((j) => j.company))].sort(),
         available: snapshot.jobs.length,
         sourceCount: snapshot.sourceCount,
@@ -273,19 +289,20 @@ export function createDiscovery({ catalog = sources, fetcher = fetch, now = Date
       };
     },
     async detail(id) {
-      const snapshot = await load();
-      const job = snapshot.jobs.find((j) => j.id === id);
-      if (!job) {
-        const error = new Error(
-          'This opening is no longer in the discovery feed. Refresh and try another opening.',
-        );
+      // Serverless instances may not share the listing cache. Resolve only a known
+      // employer from the ID, then recheck that posting without fetching every board.
+      const source = catalog.find((s) => id.startsWith(`${s.provider}-${s.slug}-`));
+      const requestedPostingId = source
+        ? id.slice(`${source.provider}-${source.slug}-`.length)
+        : '';
+      if (!source || !/^[A-Za-z0-9-]{1,100}$/.test(requestedPostingId)) {
+        const error = new Error('This opening is not recognized. Refresh and try another opening.');
         error.status = 404;
         throw error;
       }
-      const source = catalog.find((s) => `${s.provider}:${s.slug}` === job.sourceKey);
-      const raw = await readBoard(source, fetcher, job.postingId),
+      const raw = await readBoard(source, fetcher, requestedPostingId),
         full = normalizeOpening(raw, source);
-      if (!full) {
+      if (!full || full.id !== id) {
         const error = new Error('This opening is no longer listed by the employer.');
         error.status = 404;
         throw error;

@@ -1,5 +1,41 @@
 # Verification
 
+## October 14, 2026: department filters
+
+Discovery now defaults to All departments and offers department filtering alongside the existing filters and sorting. Company-board groups put Software Engineering, Data & AI, and IT & Cybersecurity first, while retaining broader fields such as Engineering, Healthcare, Business & Finance, and Education. Groups use titles and public department metadata; a listing can belong to multiple groups. Filtering happens before ranking and pagination. Adzuna uses its actual US category list and passes the selected native category into the provider search before pagination. Category metadata is cached for 15 minutes and counts toward the existing provider allowance; a category lookup failure still permits an unfiltered search.
+
+All 27 affected tests passed across department classification, discovery, Adzuna, relevance, platform authentication, and explicit saving. The five department tests passed again after adding validation for empty catalogs and malformed provider metadata. TypeScript strict checks and the production build passed. React server rendering verified department controls for both sources, the computer science options, job-card labels, and preservation of department metadata in the client workspace schema. Legacy workspaces receive empty defaults without a SQL migration.
+
+Adzuna's category/search contract was checked against its official documentation; provider tests used mocked responses. Live Adzuna category availability, interactive browser behavior, and the deployed UI remain unverified. No private workspace, API credentials, or deployed site was changed during these checks. No paid service was enabled.
+
+## October 14, 2026: profile relevance and resume skill order
+
+AI tailoring now explicitly requests supported skills in strongest job-requirement match order. Grounding preserves the generated order while removing unverified skills; manual resumes still keep the profile's entered order. A regression assertion verifies that SQL/Python ordering survives removal of an unsupported intervening skill. No real AI request was made during this change.
+
+Discovery adds Relevant to my profile. It uses the verified account's saved skill lists, experience/project titles and text, summary, and education. Whole-term comparisons, punctuation-aware skill matching, limited aliases, duplicate removal and higher weights for explicit skills produce matched-term explanations rather than fit percentages. Company-board results are ranked across all filtered listings before pagination. Adzuna's returned page is ranked afterward, so this does not claim a globally personalized US index. Available titles/departments/descriptions drive matching; company-board metadata and provider snippets can omit requirements. Contact and employer-name fields, dates and raw resume text are excluded as direct ranking signals.
+
+All 18 affected tests passed across relevance, opportunity discovery, factual AI grounding/API protection, and the Adzuna adapter. Updated grounding assertions passed the six core tests again. Tests cover pagination, aliases/punctuation, substring false positives, duplicate weighting, project/education keywords, neutral empty profiles, per-account profile lookup, and no personalized mutations of shared provider results. TypeScript strict checks and the production build passed; git diff --check passed. React rendering verified the sort choice for both sources and readable match reasons without percentages. A synthetic local benchmark ranked 15,000 listings in 198 ms; this is not a deployment performance guarantee.
+
+Ranking requires no Gemini call and forwards no profile data to job providers. No private workspace, SQL schema, API credential, or deployed site was changed during verification. Interactive browser behavior and actual deployed ranking remain unverified until the owner deploys the updated source. No database migration is needed.
+
+## October 14, 2026: discovery previews require explicit saving
+
+The discovery View opening action previously fetched full details, saved the job, and then opened its workspace. It now fetches details into a temporary, read-only preview without calling workspace persistence. Closing the preview or opening its external application link does not add an opportunity. The bookmark and Save opportunity buttons add it explicitly. Saving from a preview then opens its resume/tracking workspace; an existing saved copy is preferred so notes and resumes are retained.
+
+All four action regression tests passed: viewing invokes only the preview, explicit saving stores full details once, existing saved jobs match by ID or application URL without refetching/overwriting, and failed fetches save nothing. React rendering of the actual preview contents verified full requirements, application links, explicit Save/Close controls, Adzuna snippet notices and attribution, and zero save callback invocations during rendering. A development dependency scan reported a benign cancellation during the render helper's server shutdown after its assertions passed. Interactive browser behavior remains unverified.
+
+TypeScript strict checks and the production build passed. No saved user opportunities were removed or edited by verification. This frontend change needs a new deployment containing OpeningPreview.tsx, openingActions.mjs, its type declarations, and the updated JobsView.tsx. No database migration is required.
+
+## October 14, 2026: Vercel nested opportunity routes
+
+Reproduced the deployment issue on applicator-eta.vercel.app without signing in: /api/health returned JSON HTTP 200 and /api/openings returned the expected JSON HTTP 401, while /api/openings/greenhouse-cloudflare-123 and /api/admin/schema returned Vercel's plain-text HTTP 404 page beginning "The page could not be found". The former api/[...path].mjs filename only matched one dynamic path segment in this Vite deployment; it was not a Next.js catch-all route.
+
+Replaced that entry with api/index.mjs and added an explicit /api/:path* rewrite before the SPA fallback. Job detail requests resolve a known employer from the listing ID and fetch only that posting, without loading the full company catalog on a fresh instance. Greenhouse and Lever details still recheck the employer's current response, and invalid/unknown IDs, closed postings, mismatched returned IDs, and unreadable provider responses are rejected. Browser API parsing now preserves normal JSON errors and turns plain-text/HTML hosting failures into readable errors without exposing their bodies.
+
+All 15 affected tests passed across the opportunity adapter, response parser, authenticated API, and actual shared function entry. These include cold detail requests, nested authenticated job details, JSON authentication responses for nested owner/job paths, and plain-text hosting failures. TypeScript strict checks and the production build passed; git diff --check passed. A live public Greenhouse cold-detail check used one employer request, returned 8,121 description characters, and completed in 251 ms at the time of verification. It did not save a job or use user data, database writes, or AI.
+
+No deployment was performed. Actual Vercel edge rewrite behavior must be rechecked after the owner deploys these source/configuration changes. No SQL or environment-variable migration is required. The replacement entry and new response-parser files must be included in the new commit/deployment, along with deletion of the former catch-all file. References: https://vercel.com/docs/functions/runtimes/node-js and https://github.com/vercel/community/discussions/947 .
+
 ## October 14, 2026: email signup and owner login
 
 Email signup is now available without an invitation by default. The owner can pause new registrations; existing members and the fixed owner retain access. Public enrollment creates only ordinary membership and never restores revoked access. Existing active invitation records can be claimed during public signup without a token. When registration is paused, the existing invitation flow remains available. These changes use the existing membership/settings tables and require no new SQL migration.

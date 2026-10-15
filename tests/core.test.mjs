@@ -92,6 +92,11 @@ test('AI titles and dates come from the actual source; unsupported skills are ex
   assert.equal(result.entries[0].title, 'Transit app');
   assert.equal(result.entries[0].dates, '2025');
   assert.deepEqual(result.skills, ['Python']);
+  const reordered = groundGenerated(profile, {
+    ...generated,
+    skills: ['SQL', 'Kubernetes', 'Python'],
+  });
+  assert.deepEqual(reordered.skills, ['SQL', 'Python']);
   assert.match(result.gaps[0], /Kubernetes/);
   assert.equal(result.name, 'Zoë Example');
   assert.throws(

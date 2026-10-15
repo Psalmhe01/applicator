@@ -3,6 +3,7 @@ export type Opening = Job & {
   careerLevel: string;
   workArrangement: string;
   department: string;
+  profileMatch?: { skills: string[]; keywords: string[] };
 };
 export type OpeningFeed = {
   jobs: Opening[];
@@ -18,4 +19,8 @@ export type OpeningFeed = {
   fetchedAt: string;
   nextRefreshAt?: string;
   provider: 'catalog' | 'adzuna';
+  rankingScope?: 'catalog' | 'page';
+  profileRankingAvailable?: boolean;
+  departments?: { value: string; label: string }[];
+  departmentError?: string;
 };

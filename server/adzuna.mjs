@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { cleanHtml } from './domain.mjs';
 import { careerLevel, workArrangement } from './openings.mjs';
 import { httpError } from './platform.mjs';
+import { departmentGroups } from '../shared/departments.mjs';
 export function createAdzuna({
   env = process.env,
   fetcher = fetch,
@@ -16,6 +17,63 @@ export function createAdzuna({
         503,
         'The owner has not configured US job search yet. Company boards are available.',
       );
+  }
+  async function categories() {
+    const key = 'adzuna-us-departments-v1';
+    const cached = await cache.cacheGet(key);
+    if (cached) return cached;
+    if (flight.has(key)) return flight.get(key);
+    const task = (async () => {
+      // Fetch the provider's actual US categories once per shared-cache interval.
+      await reserve();
+      const query = new URLSearchParams({
+        app_id: env.ADZUNA_APP_ID,
+        app_key: env.ADZUNA_APP_KEY,
+        'content-type': 'application/json',
+      });
+      let raw;
+      try {
+        const response = await fetcher(
+          `https://api.adzuna.com/v1/api/jobs/us/categories?${query}`,
+          {
+            headers: { Accept: 'application/json' },
+            signal: AbortSignal.timeout(20000),
+          },
+        );
+        if (!response.ok) throw new Error('Provider unavailable');
+        raw = await response.json();
+      } catch {
+        throw httpError(
+          502,
+          'US job departments are temporarily unavailable. Clear the department filter or try again.',
+        );
+      }
+      if (!Array.isArray(raw.results))
+        throw httpError(502, 'US job departments returned an unreadable response.');
+      const unique = new Map();
+      for (const entry of raw.results) {
+        if (!entry || typeof entry.tag !== 'string' || typeof entry.label !== 'string') continue;
+        const value = String(entry.tag || ''),
+          label = cleanHtml(entry.label || '')
+            .replace(/\s+Jobs$/i, '')
+            .trim()
+            .slice(0, 100);
+        if (/^[a-z0-9][a-z0-9-]{0,99}$/.test(value) && label) unique.set(value, { value, label });
+      }
+      const options = [...unique.values()].sort((a, b) => {
+        const priority = (value) => (/^(it-|software|computer|data)/.test(value) ? 0 : 1);
+        return priority(a.value) - priority(b.value) || a.label.localeCompare(b.label);
+      });
+      if (!options.length) throw httpError(502, 'US job departments are temporarily unavailable.');
+      await cache.cacheSet(key, options);
+      return options;
+    })();
+    flight.set(key, task);
+    try {
+      return await task;
+    } finally {
+      flight.delete(key);
+    }
   }
   function normalize(raw) {
     let url;
@@ -47,13 +105,27 @@ export function createAdzuna({
       requirementsComplete: false,
       careerLevel: careerLevel(title),
       workArrangement: workArrangement(location),
-      department: raw.category?.label || '',
+      department: String(raw.category?.label || '').slice(0, 300),
+      departmentGroups: departmentGroups(title, raw.category?.label || ''),
     };
   }
   return {
     configured,
     async search(params = {}) {
       ready();
+      const department = String(params.department || '').trim();
+      let departments = [],
+        departmentError = '';
+      try {
+        departments = await categories();
+      } catch (error) {
+        if (department) throw error;
+        // A categories outage must not disable an otherwise usable all-departments search.
+        departmentError =
+          'Department filters are temporarily unavailable. You can search all departments.';
+      }
+      if (department && !departments.some((option) => option.value === department))
+        throw httpError(400, 'Choose one of the listed US departments.');
       const page = Math.max(1, Math.min(1000, Math.floor(Number(params.page) || 1))),
         level = params.level || 'Early career';
       const q = String(params.q || '')
@@ -75,13 +147,15 @@ export function createAdzuna({
         'Early career': 'intern internship graduate junior apprentice entry',
       }[level];
       if (careerKeywords) query.set('what_or', careerKeywords);
+      // Apply the provider category before pagination; never filter just a returned page.
+      if (department) query.set('category', department);
       if (params.company) query.set('company', String(params.company).slice(0, 300));
       if (params.work === 'Remote') query.set('what', `${q} remote`.trim());
       else if (params.work === 'Hybrid') query.set('what', `${q} hybrid`.trim());
       else if (params.work === 'On site') query.set('what', `${q} onsite`.trim());
       const key = `adzuna-search-${createHash('sha256').update(`${page}:${query}`).digest('hex')}`;
       const cached = await cache.cacheGet(key);
-      if (cached) return cached;
+      if (cached) return { ...cached, departments, departmentError };
       if (flight.has(key)) return flight.get(key);
       const task = (async () => {
         await reserve();
@@ -132,6 +206,8 @@ export function createAdzuna({
           failed: [],
           fetchedAt: new Date().toISOString(),
           provider: 'adzuna',
+          departments,
+          departmentError,
         };
         if (cache.cacheSetMany)
           await cache.cacheSetMany(jobs.map((job) => ({ key: `adzuna-job-${job.id}`, data: job })));

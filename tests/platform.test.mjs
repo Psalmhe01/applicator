@@ -92,6 +92,7 @@ function mockPlatform() {
 test('authenticated API enforces owner controls, user isolation, revoked access, and AI allowances', async () => {
   const platform = mockPlatform();
   let searches = 0,
+    detailId = '',
     aiCalls = 0;
   const app = createApp({
     platform,
@@ -99,6 +100,10 @@ test('authenticated API enforces owner controls, user isolation, revoked access,
       async search() {
         searches++;
         return { jobs: [] };
+      },
+      async detail(id) {
+        detailId = id;
+        return { id, description: 'The complete employer requirements.' };
       },
     },
     adzuna: { configured: false },
@@ -127,6 +132,12 @@ test('authenticated API enforces owner controls, user isolation, revoked access,
     assert.equal('serviceKey' in config, false);
     assert.equal((await request('openings')).status, 401);
     assert.equal(searches, 0);
+    assert.equal((await request('openings/greenhouse-example-123')).status, 401);
+    assert.equal(detailId, '');
+    const detail = await request('openings/greenhouse-example-123', 'friend');
+    assert.equal(detail.status, 200);
+    assert.equal((await detail.json()).description, 'The complete employer requirements.');
+    assert.equal(detailId, 'greenhouse-example-123');
     assert.equal((await request('admin', 'friend')).status, 403);
     assert.equal((await request('admin/schema', 'friend')).status, 403);
     assert.equal((await request('admin', 'owner')).status, 200);

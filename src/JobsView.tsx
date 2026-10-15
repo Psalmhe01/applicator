@@ -18,8 +18,12 @@ import {
 import { Button, Card, Empty, Field, Modal, Pill } from './components/ui';
 import { type Job, type Status, newJob, statuses, formatDate, localDate } from './model';
 import { api, authorizedFetch, errorText } from './api';
+import { readApiResponse } from './apiResponse.mjs';
+import { findSavedOpening, selectOpening } from './openingActions.mjs';
 import { useAuth } from './Auth';
 import { exportCsv } from './export';
+import OpeningPreview from './OpeningPreview';
+import { departmentOptions, departmentLabels } from '../shared/departments.mjs';
 
 export function JobCard({
   job,
@@ -34,6 +38,8 @@ export function JobCard({
   onSave?: () => void;
   saved?: boolean;
 }) {
+  const departments =
+    departmentLabels(job.departmentGroups).slice(0, 2).join(' · ') || job.department;
   return (
     <Card className="job-card">
       <div className="flex-row">
@@ -72,6 +78,7 @@ export function JobCard({
         <div className="opening-tags">
           <span>{job.careerLevel}</span>
           <span>{job.workArrangement}</span>
+          {departments && <span title={job.department || undefined}>{departments}</span>}
           {job.updatedAt && (
             <span>
               {job.source === 'Adzuna' ? 'Posted' : 'Updated'} {formatDate(job.updatedAt)}
@@ -95,6 +102,13 @@ export function JobCard({
             ? 'Open this listing to read the employer?s full requirements.'
             : 'Add the job requirements to prepare a tailored resume.')}
       </p>
+      {discover && job.profileMatch && (
+        <p className="small muted">
+          {job.profileMatch.skills.length || job.profileMatch.keywords.length
+            ? `Profile terms found: ${[...job.profileMatch.skills, ...job.profileMatch.keywords].slice(0, 4).join(', ')}`
+            : 'No profile terms found in this listing text.'}
+        </p>
+      )}
       <div className="job-card-footer">
         <span>
           {discover ? (
@@ -150,12 +164,14 @@ export default function JobsView({
     [loading, setLoading] = useState(false),
     [level, setLevel] = useState('Early career'),
     [company, setCompany] = useState(''),
+    [department, setDepartment] = useState(''),
     [location, setLocation] = useState(''),
     [work, setWork] = useState(''),
     [sort, setSort] = useState('updated'),
     [page, setPage] = useState(1),
     [refreshToken, setRefreshToken] = useState(0),
-    [openingId, setOpeningId] = useState('');
+    [openingId, setOpeningId] = useState(''),
+    [previewJob, setPreviewJob] = useState<Job | null>(null);
   const handledRefresh = useRef(0),
     openingInFlight = useRef(false);
   const discovery = tab === 'discover' && !tracker;
@@ -176,6 +192,7 @@ export default function JobsView({
         q: query,
         level,
         company,
+        department,
         location,
         work,
         sort,
@@ -189,8 +206,7 @@ export default function JobsView({
         const response = await authorizedFetch(`openings?${params}`, {
           signal: AbortSignal.any([controller.signal, AbortSignal.timeout(70000)]),
         });
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || 'Could not load openings.');
+        const result = await readApiResponse<OpeningFeed>(response);
         if (active) setFeed(result);
       } catch (e) {
         if (active) setFeedError(errorText(e));
@@ -203,7 +219,19 @@ export default function JobsView({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [discovery, provider, query, level, company, location, work, sort, page, refreshToken]);
+  }, [
+    discovery,
+    provider,
+    query,
+    level,
+    company,
+    department,
+    location,
+    work,
+    sort,
+    page,
+    refreshToken,
+  ]);
   function refresh() {
     setRefreshToken((t) => t + 1);
   }
@@ -211,38 +239,41 @@ export default function JobsView({
     setQuery('');
     setLevel('Early career');
     setCompany('');
+    setDepartment('');
     setLocation('');
     setWork('');
     setSort('updated');
     setPage(1);
   }
   async function useOpening(job: Job, view: boolean) {
-    const existing = jobs.find((j) => j.id === job.id || (job.url && j.url === job.url));
-    if (existing) {
-      if (view) open(existing);
-      else notify('This opening is already in your workspace.');
-      return;
-    }
     if (openingInFlight.current) return;
     openingInFlight.current = true;
     setOpeningId(job.id);
     try {
-      const full = await api<Job>(`openings/${encodeURIComponent(job.id)}`);
-      const saved = { ...full, createdAt: new Date().toISOString() };
-      save(saved);
-      if (view) open(saved);
-      else
-        notify(
-          full.requirementsComplete
-            ? 'Opportunity saved with its full requirements.'
-            : 'Opening saved. Paste the full requirements before tailoring your resume.',
-        );
+      const result = await selectOpening(job, jobs, view ? 'view' : 'save', {
+        load: (id) => api<Job>(`openings/${encodeURIComponent(id)}`),
+        preview: setPreviewJob,
+        open,
+        save,
+      });
+      if (result === 'saved') notify('Opportunity saved to your workspace.');
+      if (result === 'already-saved') notify('This opening is already in your workspace.');
     } catch (e) {
       notify(errorText(e));
     } finally {
       openingInFlight.current = false;
       setOpeningId('');
     }
+  }
+  function savePreview() {
+    if (!previewJob) return;
+    // Prefer the saved copy if it was added while this preview was open.
+    const existing = findSavedOpening(previewJob, jobs);
+    const saved = existing || { ...previewJob, createdAt: new Date().toISOString() };
+    if (!existing) save(saved);
+    setPreviewJob(null);
+    open(saved);
+    if (!existing) notify('Opportunity saved to your workspace.');
   }
   function add() {
     setDraft(newJob({}));
@@ -390,6 +421,7 @@ export default function JobsView({
                   setFeed(null);
                   setPage(1);
                   setCompany('');
+                  setDepartment('');
                   setSort('updated');
                   setWork('');
                 }}
@@ -420,6 +452,34 @@ export default function JobsView({
                 <option value="All">All roles</option>
                 {provider === 'catalog' && <option>Other roles</option>}
               </select>
+            </Field>
+            <Field
+              label="Department"
+              hint={
+                provider === 'catalog'
+                  ? 'Grouped from employer departments and job titles; a role can belong to several groups.'
+                  : 'Uses the provider’s US job categories.'
+              }
+            >
+              <select
+                value={department}
+                onChange={(e) => {
+                  setDepartment(e.target.value);
+                  setPage(1);
+                }}
+              >
+                <option value="">All departments</option>
+                {(provider === 'catalog' ? departmentOptions : feed?.departments || []).map(
+                  (option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ),
+                )}
+              </select>
+              {provider === 'adzuna' && feed?.departmentError && (
+                <small>{feed.departmentError}</small>
+              )}
             </Field>
             <Field label={provider === 'adzuna' ? 'Company keyword' : 'Company'}>
               {provider === 'adzuna' ? (
@@ -484,6 +544,7 @@ export default function JobsView({
                 <option value="updated">
                   {provider === 'catalog' ? 'Recently updated' : 'Newest posted'}
                 </option>
+                <option value="profile">Relevant to my profile</option>
                 {provider === 'catalog' ? (
                   <>
                     <option value="company">Company A–Z</option>
@@ -498,6 +559,17 @@ export default function JobsView({
               Reset filters
             </Button>
           </div>
+          {sort === 'profile' && (
+            <p className="small muted">
+              Uses your saved skills, experience/project text and education. Matches use available
+              listing text; they do not predict eligibility or hiring outcomes.{' '}
+              {provider === 'catalog'
+                ? 'Ranks all filtered company-board listings before pagination.'
+                : 'Ranks this returned page only, not the entire US index.'}
+              {feed?.profileRankingAvailable === false &&
+                ' Add skills or experience to your bank to personalize this sort.'}
+            </p>
+          )}
         </>
       )}
       <div className="filterbar">
@@ -701,6 +773,12 @@ export default function JobsView({
         </div>
       )}
 
+      <OpeningPreview
+        job={previewJob}
+        saved={!!previewJob && !!findSavedOpening(previewJob, jobs)}
+        save={savePreview}
+        close={() => setPreviewJob(null)}
+      />
       <Modal
         open={adding}
         onClose={() => setAdding(false)}

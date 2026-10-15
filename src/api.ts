@@ -1,14 +1,8 @@
+import { readApiResponse } from './apiResponse.mjs';
+export { ApiError } from './apiResponse.mjs';
 let tokenProvider: () => Promise<string | null> = async () => null;
 export function configureTokenProvider(provider: () => Promise<string | null>) {
   tokenProvider = provider;
-}
-export class ApiError extends Error {
-  constructor(
-    message: string,
-    public status: number,
-  ) {
-    super(message);
-  }
 }
 export async function authorizedFetch(path: string, options: RequestInit = {}) {
   const token = await tokenProvider();
@@ -29,10 +23,7 @@ export async function api<T>(path: string, body?: unknown, options: RequestInit 
     headers,
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  const result = await response.json();
-  if (!response.ok)
-    throw new ApiError(result.error || 'Request failed. Please try again.', response.status);
-  return result;
+  return readApiResponse<T>(response);
 }
 export const errorText = (error: unknown) =>
   error instanceof Error
